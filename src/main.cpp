@@ -131,7 +131,7 @@ void build(sets::Builder &b)
         logger.println(b.build.id, HEX);
     }
 
-    if (b.beginGroup("Group 1"))
+    if (b.beginGroup("Group 1")) // Группа 1
     {
         b.Input(kk::txt, "Text");
         // b.Pass(kk::pass, "Password");
@@ -141,7 +141,7 @@ void build(sets::Builder &b)
     }
     // Третий аргумент — это само значение, которое отобразится справа
     b.Label(kk::lbl2, "millis()", "", sets::Colors::Red);
-    // sets::Group g(b, "Group 2");
+    // sets::Group g(b, "Group 2"); // Убран комментарий, т.к. не используется
     b.Color(kk::color, "Color");
     b.Switch(kk::toggle, "Реле");
     b.Select(kk::selectw, "Выбор", "var1;var2;hello");
@@ -161,7 +161,7 @@ void build(sets::Builder &b)
         b.endRow();
     }
 
-    if (b.beginGroup("Group3"))
+    if (b.beginGroup("Group3")) // Группа с датами и временем
     {
         b.Date(kk::date, "Date");
         b.Time(kk::timew, "Time");
@@ -169,7 +169,7 @@ void build(sets::Builder &b)
 
         if (b.beginMenu("Submenu"))
         {
-            if (b.beginGroup("Group 3"))
+            if (b.beginGroup("Menu Switches")) // Переименовано для уникальности ID
             {
                 b.Switch("sw1"_h, "switch 1");
                 b.Switch("sw2"_h, "switch 2");
@@ -178,30 +178,34 @@ void build(sets::Builder &b)
             }
             b.endMenu();
         }
-        b.endGroup();
+        b.endGroup(); // Закрываем Group3
     }
 
-    sets::Group g(b, "Group 3");
-    if (b.beginButtons())
+    // --- Блок системных кнопок ---
+    if (b.beginGroup("Система управления")) // Переименовано для уникальности ID
     {
-        if (b.Button(kk::btn1, "reload"))
+        if (b.beginButtons())
         {
-            Serial.println("reload");
-            b.reload();
+            if (b.Button(kk::btn1, "reload"))
+            {
+                Serial.println("reload");
+                b.reload();
+            }
+            if (b.Button(kk::btn2, "clear db", sets::Colors::Blue))
+            {
+                Serial.println("clear db");
+                db.clear();
+                db.update();
+            }
+            b.endButtons();
         }
-        if (b.Button(kk::btn2, "clear db", sets::Colors::Blue))
-        {
-            Serial.println("clear db");
-            db.clear();
-            db.update();
-        }
-        b.endButtons();
+        b.endGroup(); // Закрываем Систему управления
     }
 
+    // ТЕПЕРЬ СЦЕНАРИЙ (вызывается на «чистом» уровне)
     if (b.beginGroup("Сценарий из файла"))
     {
-
-        // 1. Читаем файл и обновляем значение в БД прямо перед отрисовкой
+        // 1. Читаем файл (убедитесь, что LittleFS.begin() в setup)
         if (LittleFS.exists("/logic.json"))
         {
             File f = LittleFS.open("/logic.json", "r");
@@ -209,19 +213,17 @@ void build(sets::Builder &b)
             f.close();
         }
 
-        // 2. Выводим содержимое через стандартный Input
-        // Теперь нет ошибки приведения типов, так как используем ключ из enum kk
+        // 2. Выводим Input
         b.Input(kk::logic, "JSON код файла");
 
-        // 3. Кнопка ручного запуска
-        // Если нажата - вызываем функцию выполнения
+        // 3. Кнопка
         if (b.Button("ВЫПОЛНИТЬ СЦЕНАРИЙ", sets::Colors::Green))
         {
             runAutomation();
             Serial.println("Manual run executed");
         }
 
-        b.endGroup();
+        b.endGroup(); // Закрываем Сценарий из файла
     }
 }
 
