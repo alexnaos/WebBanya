@@ -1,5 +1,6 @@
 #include "../config/config.h"
 #include "automation.h"
+#include "ui.h"
 
 
 void runAutomation()

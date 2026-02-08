@@ -1,11 +1,23 @@
 #include <Arduino.h>
 #include <LittleFS.h>
 #include "config/config.h" // Подключаем общие объявления
+#include "modules/ui.h"
 
 // Объявление глобальных объектов здесь
 GyverDS3231 rtc;
 GyverDBFile db(&LittleFS, "/data.db");
 SettingsGyver sett("Sloboda 43", &db);
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+GyverDS3231 rtc;
+
+float temp1 = 0;
+float temp2 = 0;
+uint32_t tmr;
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+// Глобальные переменные для управления прокруткой
+String longMessage = "";
+int16_t textX = 128; // Начальная позиция
 
 void update(sets::Updater &upd)
 {
@@ -102,12 +114,11 @@ void setup()
     sett.begin();
     sett.onBuild(build);
     sett.onUpdate(update);
-   // sets::Code::update(); 
+    // sets::Code::update();
     sett.config.theme = sets::Colors::Green;
 
     setStampZone(3); // Часовой пояс
 }
-
 
 void loop()
 {
