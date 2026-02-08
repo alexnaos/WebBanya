@@ -64,6 +64,65 @@ enum kk : size_t
 
 sets::Logger logger(200);
 
+void runAutomation()
+{
+    String jsonStr = db[kk::logic].toString();
+    JsonDocument doc;
+    if (deserializeJson(doc, jsonStr) == DeserializationError::Ok)
+    {
+
+        // 2. Считываем правила из JSON
+        bool enabled = doc["enabled"] | false;
+        float tempSet = doc["temp_set"] | 20.0;
+        int hStart = doc["h_start"] | 0;
+        int hEnd = doc["h_end"] | 24;
+        String days = doc["days"] | "1,2,3,4,5,6,7";
+
+        // 3. Проверяем условия (Время + День недели + Температура)
+        bool timeOk = (rtc.hour() >= hStart && rtc.hour() < hEnd);
+        bool dayOk = (days.indexOf(String(rtc.weekDay())) != -1);
+        bool tempOk = (temp1 < tempSet); // temp1 мы берем из вашего loop
+
+        // 4. Управляем реле
+        if (enabled && timeOk && dayOk && tempOk)
+        {
+            digitalWrite(LED_PIN, HIGH); // Включить
+            db[kk::toggle] = true;       // Обновить статус в интерфейсе
+        }
+        else
+        {
+            digitalWrite(LED_PIN, LOW); // Выключить
+            db[kk::toggle] = false;
+        }
+    }
+}
+
+void loadLogicFromFile()
+{
+    if (LittleFS.exists("/logic.json"))
+    {
+        File f = LittleFS.open("/logic.json", "r");
+        if (f)
+        {
+            String content = f.readString();
+            f.close();
+
+            JsonDocument doc;
+            if (!deserializeJson(doc, content))
+            {
+                db[kk::logic] = content;
+                db.update(); // Для GyverDBFile сохраняем изменения
+                Serial.println("Logic updated from /logic.json");
+                runAutomation();
+            }
+        }
+    }
+    else
+    {
+        Serial.println("File /logic.json not found!");
+    }
+}
+
 void build(sets::Builder &b)
 {
     if (b.build.isAction())
@@ -89,7 +148,6 @@ void build(sets::Builder &b)
     b.Slider(kk::slider, "Мощность", -10, 10, 0.5, "deg");
     b.Slider2(kk::sldmin, kk::sldmax, "Установка", -10, 10, 0.5, "deg");
     // b.Log(logger);
-
     if (b.beginRow())
     {
         if (b.Button("click"))
@@ -123,10 +181,6 @@ void build(sets::Builder &b)
         b.endGroup();
     }
 
-    if (b.beginGroup("Автоматика")) {
-        b.Input(kk::logic, "JSON Сценарий"); // Появится текстовое поле
-        b.endGroup();
-    }
     sets::Group g(b, "Group 3");
     if (b.beginButtons())
     {
@@ -143,40 +197,31 @@ void build(sets::Builder &b)
         }
         b.endButtons();
     }
-}
 
-void runAutomation()
-{
-    // 1. Извлекаем строку из базы данных
-    String jsonStr = db[kk::logic].toString();
-
-    // Заменяем StaticJsonDocument<256> на JsonDocument
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, jsonStr);
-    if (error)
-        return;
-    // 2. Считываем правила из JSON
-    bool enabled = doc["enabled"] | false;
-    float tempSet = doc["temp_set"] | 20.0;
-    int hStart = doc["h_start"] | 0;
-    int hEnd = doc["h_end"] | 24;
-    String days = doc["days"] | "1,2,3,4,5,6,7";
-
-    // 3. Проверяем условия (Время + День недели + Температура)
-    bool timeOk = (rtc.hour() >= hStart && rtc.hour() < hEnd);
-    bool dayOk = (days.indexOf(String(rtc.weekDay())) != -1);
-    bool tempOk = (temp1 < tempSet); // temp1 мы берем из вашего loop
-
-    // 4. Управляем реле
-    if (enabled && timeOk && dayOk && tempOk)
+    if (b.beginGroup("Сценарий из файла"))
     {
-        digitalWrite(LED_PIN, HIGH); // Включить
-        db[kk::toggle] = true;       // Обновить статус в интерфейсе
-    }
-    else
-    {
-        digitalWrite(LED_PIN, LOW); // Выключить
-        db[kk::toggle] = false;
+
+        // 1. Читаем файл и обновляем значение в БД прямо перед отрисовкой
+        if (LittleFS.exists("/logic.json"))
+        {
+            File f = LittleFS.open("/logic.json", "r");
+            db[kk::logic] = f.readString(); // Записываем содержимое файла в ключ базы
+            f.close();
+        }
+
+        // 2. Выводим содержимое через стандартный Input
+        // Теперь нет ошибки приведения типов, так как используем ключ из enum kk
+        b.Input(kk::logic, "JSON код файла");
+
+        // 3. Кнопка ручного запуска
+        // Если нажата - вызываем функцию выполнения
+        if (b.Button("ВЫПОЛНИТЬ СЦЕНАРИЙ", sets::Colors::Green))
+        {
+            runAutomation();
+            Serial.println("Manual run executed");
+        }
+
+        b.endGroup();
     }
 }
 
@@ -256,12 +301,11 @@ void setup()
     Serial.begin(115200);
     pinMode(LED_PIN, OUTPUT);
     Serial.println("LED is ON");
-// Проверяем наличие ключа методом has()
-    if (!db.has(kk::logic)) {
-        // Записываем дефолтный сценарий в базу
-        db[kk::logic] = "{\"temp_set\":22.5,\"h_start\":8,\"h_end\":20,\"enabled\":true}";
-        db.update(); // Принудительно сохраняем в файл
-        Serial.println("Default logic created");
+
+    // 1. Файловая система (LittleFS) — основа всего
+    if (!LittleFS.begin())
+    {
+        Serial.println("LittleFS Error!");
     }
     // 1. Питание дисплея
     pinMode(DISPLAY_VCC_PIN, OUTPUT);
@@ -269,7 +313,7 @@ void setup()
     delay(200);
     digitalWrite(DISPLAY_VCC_PIN, HIGH);
     delay(200); // Даем дисплею "проснуться"
-    // 2. Файловая система и БД (СТРОГО ДО sett.begin)
+                // 2. Файловая система и БД (СТРОГО ДО sett.begin)
 #ifdef ESP32
     LittleFS.begin(true);
 #else
@@ -294,6 +338,15 @@ void setup()
     db.init(kk::sldmin, -5);
     db.init(kk::sldmax, 5);
     setStampZone(3);
+
+    // Проверяем, создана ли база
+    if (!db.has(kk::logic))
+    {
+        db[kk::logic] = "{}";
+        db.update();
+    }
+    loadLogicFromFile();
+
     // 3. Железо
     Wire.begin();
     if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
@@ -338,7 +391,6 @@ void setup()
 void loop()
 {
     sett.tick(); // Обработка веб-интерфейса
-
     static bool timeIsSet = false;
     if (sett.rtc.synced() && !timeIsSet)
     {
@@ -347,7 +399,6 @@ void loop()
         timeIsSet = true;
         Serial.println("Synced!");
     }
-
     if (!sett.rtc.synced())
         timeIsSet = false;
     // --- ВАШ ОСТАЛЬНОЙ КОД ---
@@ -359,13 +410,6 @@ void loop()
     {
         tmrOLED = millis();
         updateOLED();
-    }
-    // Таймер автоматики (5 секунд)
-    static uint32_t tmrLogic;
-    if (millis() - tmrLogic >= 5000)
-    {
-        tmrLogic = millis();
-        runAutomation();
     }
 
     // --- ТАЙМЕР 2: ДАТЧИКИ (2000 мс) ---
