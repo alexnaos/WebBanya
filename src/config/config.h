@@ -1,5 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
+#define LED_PIN D7
+#define DISPLAY_VCC_PIN D6 // Пин питания дисплея
 
 #include <Arduino.h>
 #include <GyverDS3231.h>
@@ -9,6 +11,12 @@
 #include <DallasTemperature.h>
 #include <ArduinoJson.h>
 
+// Константы и настройки
+#define WIFI_SSID "Sloboda100"
+#define WIFI_PASS "2716192023"
+#define TEMP_UPDATE_INTERVAL 1000 // 0.5 секунд
+#define LED_PIN D7
+
 // Объявления глобальных объектов
 extern GyverDS3231 rtc;
 extern GyverDBFile db;
@@ -17,12 +25,22 @@ extern Adafruit_SSD1306 display;
 extern DallasTemperature sensors;
 extern DeviceAddress addr1, addr2; // Если используете датчики
 
+float temp1 = 0;
+float temp2 = 0;
+
 // Enum для ключей базы данных
 namespace kk {
-    enum {
-        txt, tmp1, tmp2, toggle, selectw, slider, sldmin, sldmax,
-        date, timew, datime, btn1, btn2, lbl2, color, logic
-    };
+    // Переменные
+enum kk : size_t
+{
+    txt,    pass,    uintw,    intw,    int64w,
+    color,    toggle,    slider,    selectw,
+    sldmin,    sldmax,    lbl1,    lbl2,
+    date,    timew,    datime,    btn1,
+    btn2,    tmp1,    tmp2,    logic,
+};
+
+
 }
 
 // Прототипы функций, которые будут использоваться в main.cpp
