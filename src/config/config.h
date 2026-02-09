@@ -17,19 +17,16 @@
 #define LED_PIN D7
 #define ONE_WIRE_BUS D5 // Пин D1 на Wemos D1 Mini (GPIO5)
 
-
 // Объявления глобальных объектов
 extern GyverDS3231 rtc;
 extern GyverDBFile db;
 extern SettingsGyver sett;
 extern Adafruit_SSD1306 display;
 extern DeviceAddress addr1, addr2; // Если используете датчики
-extern OneWire oneWire(ONE_WIRE_BUS);
-extern DallasTemperature sensors(&oneWire);
-extern GyverDS3231 rtc;
-
 extern float temp1;
 extern float temp2;
+extern OneWire oneWire; 
+extern DallasTemperature sensors;
 
 
 // Enum для ключей базы данных
@@ -44,14 +41,12 @@ enum kk : size_t
     btn2,    tmp1,    tmp2,    logic,
 };
 
-
 }
 
 // Прототипы функций, которые будут использоваться в main.cpp
-void build(sets::Builder& b);
+
+void loadLogicFromFile(); 
 void updateOLED();
-void runAutomation();
-void loadLogicFromFile();
 
 
 #endif
