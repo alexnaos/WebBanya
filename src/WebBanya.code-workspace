@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "WebBanya",
+			"path": ".."
+		},
+		{
+			"name": "lcd",
+			"path": "../../lcd"
+		}
+	],
+	"settings": {}
+}

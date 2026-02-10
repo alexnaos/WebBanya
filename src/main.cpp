@@ -35,7 +35,7 @@ int16_t textX = 128; // Начальная позиция
 #define TEMP_UPDATE_INTERVAL 1000 // 0.5 секунд
 #define LED_PIN D7
 GyverDBFile db(&LittleFS, "/data.db");
-SettingsGyver sett("Sloboda 43", &db);
+SettingsGyver sett("Sloboda43", &db);
 
 // Переменные
 enum kk : size_t
@@ -143,7 +143,7 @@ void build(sets::Builder &b)
     // Третий аргумент — это само значение, которое отобразится справа
     b.Label(kk::lbl2, "millis()", "", sets::Colors::Red);
     // sets::Group g(b, "Group 2"); // Убран комментарий, т.к. не используется
-    b.Color(kk::color, "Color");
+    b.Color(kk::color, "Цвет");
     b.Switch(kk::toggle, "Реле");
     b.Select(kk::selectw, "Выбор", "var1;var2;hello");
     b.Slider(kk::slider, "Мощность", -10, 10, 0.5, "deg");
