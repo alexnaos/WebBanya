@@ -12,7 +12,8 @@
 #define OLED_RESET -1 // Зависит от платы, обычно -1
 #include <OneWire.h>
 #include <DallasTemperature.h>
-
+#include <GyverBME280.h> // Подключение библиотеки
+GyverBME280 bme;         // Создание обьекта bme
 // 2. Ваши проверенные адреса
 DeviceAddress addr1 = {0x28, 0xB2, 0x54, 0x7F, 0x00, 0x00, 0x00, 0xCF};
 DeviceAddress addr2 = {0x28, 0x39, 0xE2, 0x6E, 0x01, 0x00, 0x00, 0x12};
@@ -304,20 +305,33 @@ void setup()
     Serial.begin(115200);
     pinMode(LED_PIN, OUTPUT);
     Serial.println("LED is ON");
+    // bme.begin();
+
+    // 2. Сначала проверяем датчик
+    Serial.println("BME280 test");
+    if (!bme.begin(0x76))
+    {
+        Serial.println("Ошибка: BME280 не найден!");
+    }
 
     // 1. Файловая система (LittleFS) — основа всего
     if (!LittleFS.begin())
     {
         Serial.println("LittleFS Error!");
     }
-    // 1. Питание дисплея
-    pinMode(DISPLAY_VCC_PIN, OUTPUT);
-    digitalWrite(DISPLAY_VCC_PIN, LOW);
-    delay(200);
-    digitalWrite(DISPLAY_VCC_PIN, HIGH);
-    delay(200); // Даем дисплею "проснуться"
 
-     // 2. Файловая система и БД (СТРОГО ДО sett.begin)
+    // 4. Инициализируем дисплей
+    if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
+    {
+        Serial.println(F("OLED Error"));
+    }
+    else
+    {
+        display.clearDisplay();
+        display.display();
+    }
+
+    // 2. Файловая система и БД (СТРОГО ДО sett.begin)
 
     LittleFS.begin();
     db.begin();
@@ -391,33 +405,51 @@ void setup()
 
 void loop()
 {
-    sett.tick(); // Обработка веб-интерфейса
+    sett.tick(); // Обработка веб-интерфейса (GyverLibs / GyverHub)
+
+    // --- СИНХРОНИЗАЦИЯ ВРЕМЕНИ ---
     static bool timeIsSet = false;
     if (sett.rtc.synced() && !timeIsSet)
     {
-        // Синхронизируем железный модуль из браузера
         rtc.setUnix(sett.rtc.getUnix());
         timeIsSet = true;
-        Serial.println("Synced!");
+        Serial.println("RTC Synced!");
     }
     if (!sett.rtc.synced())
         timeIsSet = false;
-    // --- ВАШ ОСТАЛЬНОЙ КОД ---
+
+    // --- УПРАВЛЕНИЕ ПЕРИФЕРИЕЙ ---
     digitalWrite(LED_PIN, db[kk::toggle].toBool());
 
-    // --- ТАЙМЕР 1: ЭКРАН (100 мс) ---
+    // --- ТАЙМЕР 1: ЭКРАН (замедляем до 500 мс) ---
     static uint32_t tmrOLED;
-    if (millis() - tmrOLED >= 100)
+    if (millis() - tmrOLED >= 500)
     {
         tmrOLED = millis();
         updateOLED();
     }
 
-    // --- ТАЙМЕР 2: ДАТЧИКИ (2000 мс) ---
-    static uint32_t tmrTemp;
-    if (millis() - tmrTemp >= 2000)
+    // --- ТАЙМЕР 2: ДАТЧИКИ ---
+    static uint32_t tmrSensors;
+    if (millis() - tmrSensors >= 2000)
     {
-        tmrTemp = millis();
+        tmrSensors = millis();
+
+        // ПЕРЕД чтением BME можно добавить микропаузу,
+        // чтобы шина "отдохнула" после дисплея
+        delay(10);
+
+        float tempBME = bme.readTemperature();
+        float pressBME = bme.readPressure();
+
+        // Вывод BME в монитор порта
+        Serial.print("BME280: ");
+        Serial.print(tempBME, 1); // 1 знак после запятой
+        Serial.print(" *C, ");
+        Serial.print(pressureToMmHg(pressBME));
+        Serial.println(" mm Hg");
+
+        // 2. Читаем DS18B20 (результат запроса от прошлого цикла)
         float t1 = sensors.getTempC(addr1);
         float t2 = sensors.getTempC(addr2);
 
@@ -431,6 +463,10 @@ void loop()
             temp2 = t2;
             db[kk::tmp2] = temp2;
         }
+
+        // Отправляем новый запрос на измерение для следующего цикла
         sensors.requestTemperatures();
+
+        Serial.println("--- Sensors Updated ---");
     }
 }
