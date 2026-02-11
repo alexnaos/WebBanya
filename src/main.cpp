@@ -35,7 +35,7 @@ int16_t textX = 128; // Начальная позиция
 #define TEMP_UPDATE_INTERVAL 1000 // 0.5 секунд
 #define LED_PIN D7
 GyverDBFile db(&LittleFS, "/data.db");
-SettingsGyver sett("Sloboda43", &db);
+SettingsGyver sett("Sloboda43 work!", &db);
 
 // Переменные
 enum kk : size_t
@@ -316,12 +316,10 @@ void setup()
     delay(200);
     digitalWrite(DISPLAY_VCC_PIN, HIGH);
     delay(200); // Даем дисплею "проснуться"
-                // 2. Файловая система и БД (СТРОГО ДО sett.begin)
-#ifdef ESP32
-    LittleFS.begin(true);
-#else
+
+     // 2. Файловая система и БД (СТРОГО ДО sett.begin)
+
     LittleFS.begin();
-#endif
     db.begin();
     // Инициализируем базу (только если ключей еще нет)
     db.init(kk::txt, "text");
