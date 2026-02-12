@@ -25,6 +25,9 @@ GyverDS3231 rtc;
 // 3. Глобальные переменные для хранения температуры
 float temp1 = 0;
 float temp2 = 0;
+float bmeTemp = 0.0;
+float bmePress = 0.0;
+
 uint32_t tmr;
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 // Глобальные переменные для управления прокруткой
@@ -233,37 +236,27 @@ void updateOLED()
 {
     display.clearDisplay();
     display.setTextColor(SSD1306_WHITE);
+
     display.setTextSize(1);
+    display.setCursor(0, 0); // Начало верхней строки
 
-    // --- ЛЕВЫЙ БЛОК (0-63 пикселя): ВРЕМЯ ---
-    display.setCursor(0, 0);
-    // Часы
-    if (rtc.hour() < 10)
-        display.print('0');
-    display.print(rtc.hour());
-    display.print(':');
+    // Выводим давление
+    display.print("P:");
+    display.print(bmePress, 0);
+    display.print("mm "); // Сократили до "mm", чтобы влезло
 
-    // Минуты
-    if (rtc.minute() < 10)
-        display.print('0');
-    display.print(rtc.minute());
-    display.print(':');
+    // Выводим температуру (BME)
+    display.print("T:");
+    display.print(bmeTemp, 1);
+    display.write(247); // Символ градуса (°)
+    display.print("C");
 
-    // Секунды
-    if (rtc.second() < 10)
-        display.print('0');
-    display.print(rtc.second());
-    // Мигающая звездочка синхронизации
+    // Мигающая звездочка в конце этой же строки
     if (sett.rtc.synced() && millis() % 1000 < 500)
     {
         display.print(" *");
     }
-    // --- ПРАВЫЙ БЛОК (64-127 пикселей): ТЕКСТ ---
-    display.setCursor(64, 0);
-    // toString() может быть длинным, библиотека сама перенесет его,
-    // если он не влезет в остаток строки
-    // display.print(db[kk::txt].toString());
-    display.print(db[kk::color].toString());
+
     // --- 2. Статус и Выбор ---
     display.setTextSize(2);
     display.setCursor(0, 12);
@@ -302,6 +295,7 @@ void update(sets::Updater &upd)
 
 void setup()
 {
+    delay(3000);
     Serial.begin(115200);
     pinMode(LED_PIN, OUTPUT);
     Serial.println("LED is ON");
@@ -405,7 +399,7 @@ void setup()
 
 void loop()
 {
-    sett.tick(); // Обработка веб-интерфейса (GyverLibs / GyverHub)
+    sett.tick();
 
     // --- СИНХРОНИЗАЦИЯ ВРЕМЕНИ ---
     static bool timeIsSet = false;
@@ -413,60 +407,68 @@ void loop()
     {
         rtc.setUnix(sett.rtc.getUnix());
         timeIsSet = true;
-        Serial.println("RTC Synced!");
     }
     if (!sett.rtc.synced())
         timeIsSet = false;
 
-    // --- УПРАВЛЕНИЕ ПЕРИФЕРИЕЙ ---
     digitalWrite(LED_PIN, db[kk::toggle].toBool());
 
-    // --- ТАЙМЕР 1: ЭКРАН (замедляем до 500 мс) ---
+    // --- ТАЙМЕР 1: ЭКРАН ---
     static uint32_t tmrOLED;
     if (millis() - tmrOLED >= 500)
     {
         tmrOLED = millis();
         updateOLED();
+        // После тяжелого вывода на OLED даем шине "остыть"
+        // Это предотвратит ошибки чтения BME сразу после обновления экрана
     }
 
     // --- ТАЙМЕР 2: ДАТЧИКИ ---
     static uint32_t tmrSensors;
     if (millis() - tmrSensors >= 2000)
     {
+        // Проверяем, не обновлялся ли OLED только что (менее 50мс назад)
+        // Если обновился - пропускаем этот цикл loop, чтобы не мешать
+        if (millis() - tmrOLED < 50)
+            return;
+
         tmrSensors = millis();
 
-        // ПЕРЕД чтением BME можно добавить микропаузу,
-        // чтобы шина "отдохнула" после дисплея
-        delay(10);
+        // Читаем BME280
+        // Внутри таймера датчиков в loop:
+        bmeTemp = bme.readTemperature();
+        bmePress = pressureToMmHg(bme.readPressure()); // используем вашу функцию перевода
 
-        float tempBME = bme.readTemperature();
-        float pressBME = bme.readPressure();
+        // Проверка: если BME вернул NAN (ошибку), пробуем переинициализировать I2C
+        if (isnan(bmeTemp))
+        {
+            Serial.println("BME280 Error! Resetting bus...");
+            Wire.begin();
+        }
+        else
+        {
+            Serial.print("BME280: ");
+            Serial.print(bmeTemp, 1);
+            Serial.print(" *C, ");
+            Serial.print(bmePress / 133.322, 1); // Перевод в мм рт. ст.
+            Serial.println(" mm Hg");
+        }
 
-        // Вывод BME в монитор порта
-        Serial.print("BME280: ");
-        Serial.print(tempBME, 1); // 1 знак после запятой
-        Serial.print(" *C, ");
-        Serial.print(pressureToMmHg(pressBME));
-        Serial.println(" mm Hg");
-
-        // 2. Читаем DS18B20 (результат запроса от прошлого цикла)
+        // Читаем DS18B20
         float t1 = sensors.getTempC(addr1);
         float t2 = sensors.getTempC(addr2);
 
-        if (t1 != DEVICE_DISCONNECTED_C)
+        if (t1 > -50 && t1 < 100)
         {
             temp1 = t1;
             db[kk::tmp1] = temp1;
         }
-        if (t2 != DEVICE_DISCONNECTED_C)
+        if (t2 > -50 && t2 < 100)
         {
             temp2 = t2;
             db[kk::tmp2] = temp2;
         }
 
-        // Отправляем новый запрос на измерение для следующего цикла
         sensors.requestTemperatures();
-
-        Serial.println("--- Sensors Updated ---");
     }
 }
