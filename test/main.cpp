@@ -19,7 +19,6 @@ DeviceAddress addr1 = {0x28, 0xB2, 0x54, 0x7F, 0x00, 0x00, 0x00, 0xCF};
 DeviceAddress addr2 = {0x28, 0x39, 0xE2, 0x6E, 0x01, 0x00, 0x00, 0x12};
 // 1. Настройка пина и библиотек
 #define ONE_WIRE_BUS D5 // Пин D1 на Wemos D1 Mini (GPIO5)
-#define MOSFET_PIN D6   // Пин управления затвором
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 GyverDS3231 rtc;
@@ -153,7 +152,7 @@ void build(sets::Builder &b)
     b.Select(kk::selectw, "Выбор", "var1;var2;hello");
     b.Slider(kk::slider, "Мощность", -10, 10, 0.5, "deg");
     b.Slider2(kk::sldmin, kk::sldmax, "Установка", -10, 10, 0.5, "deg");
-    b.Log(logger);
+    // b.Log(logger);
     if (b.beginRow())
     {
         if (b.Button("click"))
@@ -301,9 +300,6 @@ void setup()
     pinMode(LED_PIN, OUTPUT);
     Serial.println("LED is ON");
     // bme.begin();
-    pinMode(MOSFET_PIN, OUTPUT);
-    // Для плавности на ESP8266 можно увеличить разрешение ШИМ (0-1023)
-    analogWriteRange(1023);
 
     // 2. Сначала проверяем датчик
     Serial.println("BME280 test");
@@ -400,7 +396,6 @@ void setup()
 
     setStampZone(3); // Часовой пояс
 }
-
 
 void loop()
 {
