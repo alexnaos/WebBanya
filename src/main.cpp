@@ -6,29 +6,23 @@
 #include <Adafruit_SSD1306.h>
 #include <GyverDS3231.h>
 #include <ArduinoJson.h>
-#define DISPLAY_VCC_PIN D6 // Пин питания дисплея
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1 // Зависит от платы, обычно -1
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include <GyverBME280.h> // Подключение библиотеки
-GyverBME280 bme;         // Создание обьекта bme
 // 2. Ваши проверенные адреса
 DeviceAddress addr1 = {0x28, 0xB2, 0x54, 0x7F, 0x00, 0x00, 0x00, 0xCF};
 DeviceAddress addr2 = {0x28, 0x39, 0xE2, 0x6E, 0x01, 0x00, 0x00, 0x12};
 // 1. Настройка пина и библиотек
 #define ONE_WIRE_BUS D5 // Пин D1 на Wemos D1 Mini (GPIO5)
-#define MOSFET_PIN D6   // Пин управления затвором
+#define LED_PIN D7
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 GyverDS3231 rtc;
 // 3. Глобальные переменные для хранения температуры
 float temp1 = 0;
 float temp2 = 0;
-float bmeTemp = 0.0;
-float bmePress = 0.0;
-
 uint32_t tmr;
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 // Глобальные переменные для управления прокруткой
@@ -38,7 +32,6 @@ int16_t textX = 128; // Начальная позиция
 #define WIFI_SSID "Sloboda100"
 #define WIFI_PASS "2716192023"
 #define TEMP_UPDATE_INTERVAL 1000 // 0.5 секунд
-#define LED_PIN D7
 GyverDBFile db(&LittleFS, "/data.db");
 SettingsGyver sett("Sloboda43 work!", &db);
 
@@ -89,17 +82,17 @@ void runAutomation()
         bool dayOk = (days.indexOf(String(rtc.weekDay())) != -1);
         bool tempOk = (temp1 < tempSet); // temp1 мы берем из вашего loop
 
-        // 4. Управляем реле
-        if (enabled && timeOk && dayOk && tempOk)
-        {
-            digitalWrite(LED_PIN, HIGH); // Включить
-            db[kk::toggle] = true;       // Обновить статус в интерфейсе
-        }
-        else
-        {
-            digitalWrite(LED_PIN, LOW); // Выключить
-            db[kk::toggle] = false;
-        }
+        // // 4. Управляем реле
+        // if (enabled && timeOk && dayOk && tempOk)
+        // {
+        //     digitalWrite(LED_PIN, HIGH); // Включить
+        //     db[kk::toggle] = true;       // Обновить статус в интерфейсе
+        // }
+        // else
+        // {
+        //     digitalWrite(LED_PIN, LOW); // Выключить
+        //     db[kk::toggle] = false;
+        // }
     }
 }
 
@@ -151,7 +144,12 @@ void build(sets::Builder &b)
     b.Color(kk::color, "Цвет");
     b.Switch(kk::toggle, "Реле");
     b.Select(kk::selectw, "Выбор", "var1;var2;hello");
-    b.Slider(kk::slider, "Мощность", -10, 10, 0.5, "deg");
+    // b.Slider(kk::slider, "Мощность", -10, 10, 0.5, "deg");
+    // Правильный формат: слайдер(ID, имя, мин, макс, шаг)
+    b.Slider(kk::slider, "Мощность", 0, 1023, 1);
+    // Используйте указатель (&), чтобы библиотека сама писала значение в базу
+    // b.Slider(&db[kk::slider], gh::Int).name("Мощность").range(0, 1023, 1);
+
     b.Slider2(kk::sldmin, kk::sldmax, "Установка", -10, 10, 0.5, "deg");
     b.Log(logger);
     if (b.beginRow())
@@ -237,20 +235,8 @@ void updateOLED()
 {
     display.clearDisplay();
     display.setTextColor(SSD1306_WHITE);
-
     display.setTextSize(1);
     display.setCursor(0, 0); // Начало верхней строки
-
-    // Выводим давление
-    display.print("P:");
-    display.print(bmePress, 0);
-    display.print("mm "); // Сократили до "mm", чтобы влезло
-
-    // Выводим температуру (BME)
-    display.print("T:");
-    display.print(bmeTemp, 1);
-    display.write(247); // Символ градуса (°)
-    display.print("C");
 
     // Мигающая звездочка в конце этой же строки
     if (sett.rtc.synced() && millis() % 1000 < 500)
@@ -300,23 +286,9 @@ void setup()
     Serial.begin(115200);
     pinMode(LED_PIN, OUTPUT);
     Serial.println("LED is ON");
-    // bme.begin();
-    pinMode(MOSFET_PIN, OUTPUT);
-    // Для плавности на ESP8266 можно увеличить разрешение ШИМ (0-1023)
-    analogWriteRange(1023);
-
-    // 2. Сначала проверяем датчик
-    Serial.println("BME280 test");
-    if (!bme.begin(0x76))
-    {
-        Serial.println("Ошибка: BME280 не найден!");
-    }
-
-    // 1. Файловая система (LittleFS) — основа всего
-    if (!LittleFS.begin())
-    {
-        Serial.println("LittleFS Error!");
-    }
+    // Для ESP8266 по умолчанию диапазон 0-1023.
+    analogWriteRange(1023); // Стандарт для ESP8266
+    analogWriteFreq(1000);
 
     // 4. Инициализируем дисплей
     if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
@@ -377,7 +349,7 @@ void setup()
     }
     else
     {
-        Serial.println("RTC NOT FOUND (OK: 0)");
+        // Serial.println("RTC NOT FOUND (OK: 0)");
     }
 
     display.clearDisplay();
@@ -401,79 +373,65 @@ void setup()
     setStampZone(3); // Часовой пояс
 }
 
-
 void loop()
 {
     sett.tick();
 
-    // --- СИНХРОНИЗАЦИЯ ВРЕМЕНИ ---
-    static bool timeIsSet = false;
-    if (sett.rtc.synced() && !timeIsSet)
+    sett.tick();
+
+    static int lastPwmValue = -1;
+
+    // 1. Получаем чистое значение (0-1023)
+    float sliderValue = db[kk::slider].toFloat();
+    int pwmValue = (int)sliderValue; // Просто приводим к целому числу
+
+    // 2. Ограничиваем на всякий случай (от 0 до 1023)
+    pwmValue = constrain(pwmValue, 0, 1023);
+
+    // 3. Обновляем MOSFET, если значение изменилось
+    if (pwmValue != lastPwmValue)
     {
-        rtc.setUnix(sett.rtc.getUnix());
-        timeIsSet = true;
+        analogWrite(D7, pwmValue);
+
+        Serial.print("Slider & PWM: ");
+        Serial.println(pwmValue); // Теперь в порту и на OLED будут одинаковые цифры
+
+        lastPwmValue = pwmValue;
     }
-    if (!sett.rtc.synced())
-        timeIsSet = false;
 
-    digitalWrite(LED_PIN, db[kk::toggle].toBool());
-
-    // --- ТАЙМЕР 1: ЭКРАН ---
+    // --- ТАЙМЕР 1: ЭКРАН (каждые 500 мс) ---
     static uint32_t tmrOLED;
     if (millis() - tmrOLED >= 500)
     {
         tmrOLED = millis();
         updateOLED();
-        // После тяжелого вывода на OLED даем шине "остыть"
-        // Это предотвратит ошибки чтения BME сразу после обновления экрана
     }
 
-    // --- ТАЙМЕР 2: ДАТЧИКИ ---
+    // --- ТАЙМЕР 2: ДАТЧИКИ (каждые 2000 мс) ---
     static uint32_t tmrSensors;
     if (millis() - tmrSensors >= 2000)
     {
-        // Проверяем, не обновлялся ли OLED только что (менее 50мс назад)
-        // Если обновился - пропускаем этот цикл loop, чтобы не мешать
-        if (millis() - tmrOLED < 50)
-            return;
-
-        tmrSensors = millis();
-
-        // Читаем BME280
-        // Внутри таймера датчиков в loop:
-        bmeTemp = bme.readTemperature();
-        bmePress = pressureToMmHg(bme.readPressure()); // используем вашу функцию перевода
-
-        // Проверка: если BME вернул NAN (ошибку), пробуем переинициализировать I2C
-        if (isnan(bmeTemp))
+        // Убираем return, чтобы не блокировать другие процессы.
+        // Просто оборачиваем чтение в условие "если прошло достаточно времени после OLED"
+        if (millis() - tmrOLED > 50)
         {
-            Serial.println("BME280 Error! Resetting bus...");
-            Wire.begin();
-        }
-        else
-        {
-            Serial.print("BME280: ");
-            Serial.print(bmeTemp, 1);
-            Serial.print(" *C, ");
-            Serial.print(bmePress / 133.322, 1); // Перевод в мм рт. ст.
-            Serial.println(" mm Hg");
-        }
+            tmrSensors = millis(); // Сбрасываем таймер только при чтении
 
-        // Читаем DS18B20
-        float t1 = sensors.getTempC(addr1);
-        float t2 = sensors.getTempC(addr2);
+            float t1 = sensors.getTempC(addr1);
+            float t2 = sensors.getTempC(addr2);
 
-        if (t1 > -50 && t1 < 100)
-        {
-            temp1 = t1;
-            db[kk::tmp1] = temp1;
-        }
-        if (t2 > -50 && t2 < 100)
-        {
-            temp2 = t2;
-            db[kk::tmp2] = temp2;
-        }
+            if (t1 > -50 && t1 < 125)
+            { // DS18B20 работает до 125°C
+                temp1 = t1;
+                db[kk::tmp1] = temp1;
+            }
+            if (t2 > -50 && t2 < 125)
+            {
+                temp2 = t2;
+                db[kk::tmp2] = temp2;
+            }
 
-        sensors.requestTemperatures();
+            sensors.requestTemperatures(); // Запрашиваем новое чтение на следующий цикл
+        }
     }
 }
