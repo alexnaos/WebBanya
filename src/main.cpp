@@ -147,11 +147,12 @@ void build(sets::Builder &b)
     // b.Slider(kk::slider, "Мощность", -10, 10, 0.5, "deg");
     // Правильный формат: слайдер(ID, имя, мин, макс, шаг)
     b.Slider(kk::slider, "Мощность", 0, 1023, 1);
+
     // Используйте указатель (&), чтобы библиотека сама писала значение в базу
     // b.Slider(&db[kk::slider], gh::Int).name("Мощность").range(0, 1023, 1);
 
     b.Slider2(kk::sldmin, kk::sldmax, "Установка", -10, 10, 0.5, "deg");
-    b.Log(logger);
+    // b.Log(logger);
     if (b.beginRow())
     {
         if (b.Button("click"))
@@ -282,156 +283,116 @@ void update(sets::Updater &upd)
 
 void setup()
 {
-    delay(3000);
+    delay(1000); // 3 секунды — слишком много, 1 сек достаточно
     Serial.begin(115200);
-    pinMode(LED_PIN, OUTPUT);
-    Serial.println("LED is ON");
-    // Для ESP8266 по умолчанию диапазон 0-1023.
-    analogWriteRange(1023); // Стандарт для ESP8266
-    analogWriteFreq(1000);
 
-    // 4. Инициализируем дисплей
-    if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
-    {
-        Serial.println(F("OLED Error"));
-    }
-    else
+    // 1. Конфигурация пинов
+    pinMode(D7, OUTPUT);
+    analogWriteRange(1023);
+    analogWriteFreq(5000);
+    analogWrite(D7, 0);
+
+    // 2. База данных и файлы (СИСТЕМА)
+    if (!LittleFS.begin())
+        Serial.println("FS Error");
+    db.begin();
+
+    // Инициализация ключей...
+    db.init(kk::slider, 0.0f); // убедитесь, что тип данных совпадает (float)
+    // ... остальные db.init ...
+
+    loadLogicFromFile();
+
+    // 3. Шина I2C и Железо
+    Wire.begin();          // Сначала запускаем шину
+    Wire.setClock(400000); // Ускоряем шину до 400кГц для OLED
+
+    if (display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
     {
         display.clearDisplay();
         display.display();
     }
 
-    // 2. Файловая система и БД (СТРОГО ДО sett.begin)
-
-    LittleFS.begin();
-    db.begin();
-    // Инициализируем базу (только если ключей еще нет)
-    db.init(kk::txt, "text");
-    db.init(kk::tmp1, 0.0f);
-    db.init(kk::tmp2, 0.0f);
-    db.init(kk::pass, "some pass");
-    db.init(kk::uintw, 64u);
-    db.init(kk::intw, -10);
-    db.init(kk::int64w, 1234567ll);
-    db.init(kk::color, 0xff0000);
-    db.init(kk::toggle, true);
-    db.init(kk::slider, -3.5);
-    db.init(kk::selectw, (uint8_t)1);
-    db.init(kk::date, 1719941932);
-    db.init(kk::timew, 60);
-    db.init(kk::datime, 1719941932);
-    db.init(kk::sldmin, -5);
-    db.init(kk::sldmax, 5);
-    setStampZone(3);
-
-    // Проверяем, создана ли база
-    if (!db.has(kk::logic))
-    {
-        db[kk::logic] = "{}";
-        db.update();
-    }
-    loadLogicFromFile();
-
-    // 3. Железо
-    Wire.begin();
-    if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
-    {
-        Serial.println(F("OLED Error"));
-    }
     rtc.begin();
     if (rtc.isOK())
     {
-        // Прямое приведение объекта rtc к типу Datime
-        // Библиотека сама сконвертирует время в нужный формат без вызова getUnix()
         Datime dt = rtc;
         sett.rtc = dt.getUnix();
-        Serial.println("RTC OK: Time loaded");
-    }
-    else
-    {
-        // Serial.println("RTC NOT FOUND (OK: 0)");
     }
 
-    display.clearDisplay();
-    display.display();
     sensors.begin();
     sensors.setWaitForConversion(false);
     sensors.requestTemperatures();
 
-    // 4. Сеть
-    WiFi.mode(WIFI_AP_STA);
+    // 4. Сеть (в самом конце)
+    WiFi.mode(WIFI_STA); // Если не используете AP, лучше только STA
     WiFi.begin(WIFI_SSID, WIFI_PASS);
-    // ... цикл подключения ...
-    WiFi.softAP("AP ESP");
 
-    // 5. Интерфейс (ПОСЛЕ БД)
+    uint8_t tries = 20;
+    while (WiFi.status() != WL_CONNECTED && tries--)
+    {
+        delay(250); // Уменьшил delay, чтобы не вешать стек
+        Serial.print(".");
+    }
+    Serial.println(WiFi.localIP());
+
+    // 5. Запуск интерфейса
     sett.begin();
     sett.onBuild(build);
     sett.onUpdate(update);
-    sett.config.theme = sets::Colors::Green;
 
-    setStampZone(3); // Часовой пояс
+    setStampZone(3);
 }
 
 void loop()
 {
+    // 1. Сетевой тик должен быть первым и самым частым
     sett.tick();
 
-    sett.tick();
-
+    static uint32_t tmrSlider;
     static int lastPwmValue = -1;
 
-    // 1. Получаем чистое значение (0-1023)
-    float sliderValue = db[kk::slider].toFloat();
-    int pwmValue = (int)sliderValue; // Просто приводим к целому числу
+    // 2. Слайдер: ограничим частоту чтения из БД
+    if (millis() - tmrSlider >= 100)
+    { // 10 раз в сек вполне достаточно
+        tmrSlider = millis();
+        int pwmValue = (int)db[kk::slider].toFloat();
+        pwmValue = constrain(pwmValue, 0, 1023);
 
-    // 2. Ограничиваем на всякий случай (от 0 до 1023)
-    pwmValue = constrain(pwmValue, 0, 1023);
-
-    // 3. Обновляем MOSFET, если значение изменилось
-    if (pwmValue != lastPwmValue)
-    {
-        analogWrite(D7, pwmValue);
-
-        Serial.print("Slider & PWM: ");
-        Serial.println(pwmValue); // Теперь в порту и на OLED будут одинаковые цифры
-
-        lastPwmValue = pwmValue;
+        if (pwmValue != lastPwmValue)
+        {
+            analogWrite(D7, pwmValue);
+            lastPwmValue = pwmValue;
+        }
     }
 
-    // --- ТАЙМЕР 1: ЭКРАН (каждые 500 мс) ---
+    // 3. Дисплей и Датчики (РАЗНОСИМ ВО ВРЕМЕНИ)
     static uint32_t tmrOLED;
     if (millis() - tmrOLED >= 500)
     {
         tmrOLED = millis();
         updateOLED();
+        // Даем процессору "выдохнуть" после тяжелого вывода на OLED
+        yield();
     }
 
-    // --- ТАЙМЕР 2: ДАТЧИКИ (каждые 2000 мс) ---
     static uint32_t tmrSensors;
     if (millis() - tmrSensors >= 2000)
     {
-        // Убираем return, чтобы не блокировать другие процессы.
-        // Просто оборачиваем чтение в условие "если прошло достаточно времени после OLED"
-        if (millis() - tmrOLED > 50)
+        // Проверяем, чтобы датчики не читались одновременно с OLED
+        if (millis() - tmrOLED > 100)
         {
-            tmrSensors = millis(); // Сбрасываем таймер только при чтении
+            tmrSensors = millis();
 
             float t1 = sensors.getTempC(addr1);
             float t2 = sensors.getTempC(addr2);
 
             if (t1 > -50 && t1 < 125)
-            { // DS18B20 работает до 125°C
-                temp1 = t1;
-                db[kk::tmp1] = temp1;
-            }
+                db[kk::tmp1] = t1;
             if (t2 > -50 && t2 < 125)
-            {
-                temp2 = t2;
-                db[kk::tmp2] = temp2;
-            }
+                db[kk::tmp2] = t2;
 
-            sensors.requestTemperatures(); // Запрашиваем новое чтение на следующий цикл
+            sensors.requestTemperatures();
         }
     }
 }
