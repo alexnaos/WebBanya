@@ -54,12 +54,14 @@ enum kk : size_t
 extern GyverDBFile db;
 extern SettingsGyver sett;
 extern sets::Logger logger;
+extern Adafruit_SSD1306 display; // Объявляем, что дисплей общий
 extern float temp1;
 extern float temp2;
 
+
 void initSensors();
-void handleSensors();
 void updateOLED();
+void handleSensors();
 void setup();
 void loop();
 
