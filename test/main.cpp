@@ -216,47 +216,38 @@ void build(sets::Builder &b)
 void updateOLED()
 {
     display.clearDisplay();
-    display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 0);
-
-    // Просто создаем Datime из sett.rtc. Он сам подтянет локальное время
-    Datime dt = sett.rtc;
-
-    // Вывод ЧЧ:ММ:СС
-    if (dt.hour < 10)
-        display.print('0');
-    display.print(dt.hour);
-    display.print(':');
-    if (dt.minute < 10)
-        display.print('0');
-    display.print(dt.minute);
-    display.print(':');
-    if (dt.second < 10)
-        display.print('0');
-    display.print(dt.second);
-
-    // Мигающая звездочка
-    if (millis() % 1000 < 500)
-    {
-        display.print("**");
-    }
-
-    // --- ПРАВЫЙ БЛОК (64-127 пикселей): ТЕКСТ / СТАТУС ---
-    display.setCursor(64, 0);
     display.setTextSize(1);
 
-    if (WiFi.status() == WL_CONNECTED)
+    // --- ЛЕВЫЙ БЛОК (0-63 пикселя): ВРЕМЯ ---
+    display.setCursor(0, 0);
+    // Часы
+    if (rtc.hour() < 10)
+        display.print('0');
+    display.print(rtc.hour());
+    display.print(':');
+
+    // Минуты
+    if (rtc.minute() < 10)
+        display.print('0');
+    display.print(rtc.minute());
+    display.print(':');
+
+    // Секунды
+    if (rtc.second() < 10)
+        display.print('0');
+    display.print(rtc.second());
+    // Мигающая звездочка синхронизации
+    if (sett.rtc.synced() && millis() % 1000 < 500)
     {
-        display.print("ONLINE");
-        // Если нужно вывести IP маленьким шрифтом под надписью, можно так:
-        // display.setCursor(64, 8);
-        // display.print(WiFi.localIP());
+        display.print(" *");
     }
-    else
-    {
-        display.print("OFFLINE");
-    }
+    // --- ПРАВЫЙ БЛОК (64-127 пикселей): ТЕКСТ ---
+    display.setCursor(64, 0);
+    // toString() может быть длинным, библиотека сама перенесет его,
+    // если он не влезет в остаток строки
+    // display.print(db[kk::txt].toString());
+    display.print(WiFi.localIP());
 
     // --- 2. Статус и Выбор ---
     display.setTextSize(2);
@@ -314,6 +305,7 @@ void setup()
     analogWriteRange(1023);
     analogWriteFreq(20000);
     analogWrite(D7, 0);
+
     Serial.println("LED is ON");
     // 1. Файловая система (LittleFS) — основа всего
     if (!LittleFS.begin())
@@ -361,23 +353,19 @@ void setup()
     {
         Serial.println(F("OLED Error"));
     }
-
-    // 1. Инициализация физического RTC
     rtc.begin();
-    // Явно указываем класс для обхода ошибки ambiguous
-    uint32_t unix = rtc.GyverDS3231Min::getUnix();
-
-    // Установка системного времени ESP
-    timeval tv = {(time_t)unix, 0};
-    settimeofday(&tv, NULL);
-    // Установка часового пояса (для 24-часового формата)
-    setStampZone(3);
-
-    // Синхронизируем программные часы SettingsGyver с системными
-    // Просто присваиваем unix-штамп
-    sett.rtc = unix;
-    Serial.print("RTC Unix: ");
-    Serial.println(unix);
+    if (rtc.isOK())
+    {
+        // Прямое приведение объекта rtc к типу Datime
+        // Библиотека сама сконвертирует время в нужный формат без вызова getUnix()
+        Datime dt = rtc;
+        sett.rtc = dt.getUnix();
+        Serial.println("RTC OK: Time loaded");
+    }
+    else
+    {
+        Serial.println("RTC NOT FOUND (OK: 0)");
+    }
 
     display.clearDisplay();
     display.display();
@@ -402,29 +390,17 @@ void setup()
 
 void loop()
 {
-
-    sett.tick(); // Важно для работы времени и веба
-
-    // 1. Авто-синхронизация железного модуля из веба/NTP
-    static bool timeIsSynced = false;
-    if (sett.rtc.synced() && !timeIsSynced)
+    sett.tick(); // Обработка веб-интерфейса
+    static bool timeIsSet = false;
+    if (sett.rtc.synced() && !timeIsSet)
     {
-        // Как только время в системе стало точным (из браузера/NTP)
-        // Записываем его в физический модуль DS3231
+        // Синхронизируем железный модуль из браузера
         rtc.setUnix(sett.rtc.getUnix());
-        timeIsSynced = true;
-        Serial.println("RTC Hardware updated from Web!");
+        timeIsSet = true;
+        Serial.println("Synced!");
     }
     if (!sett.rtc.synced())
-        timeIsSynced = false;
-
-    // 2. Обновление OLED раз в секунду
-    static uint32_t oledTmr;
-    if (millis() - oledTmr >= 1000)
-    {
-        oledTmr = millis();
-        updateOLED();
-    }
+        timeIsSet = false;
 
     // --- Управление пином D7 (Совмещаем Toggle и Slider) ---
     static uint32_t tmrControl;
