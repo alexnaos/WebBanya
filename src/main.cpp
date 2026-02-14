@@ -141,15 +141,11 @@ void build(sets::Builder &b)
         b.Label(kk::tmp2, "Улица");
         b.endGroup();
     }
-    // Третий аргумент — это само значение, которое отобразится справа
-    b.Label(kk::lbl2, "millis()", "", sets::Colors::Red);
-    // sets::Group g(b, "Group 2"); // Убран комментарий, т.к. не используется
-    b.Color(kk::color, "Цвет");
     b.Switch(kk::toggle, "Реле");
     b.Select(kk::selectw, "Выбор", "var1;var2;hello");
-    b.Slider(kk::slider, "Мощность", -10, 10, 0.5, "deg");
-    b.Slider2(kk::sldmin, kk::sldmax, "Установка", -10, 10, 0.5, "deg");
-    // b.Log(logger);
+    // b.Slider(kk::slider, "Мощность", -10, 10, 0.5, "deg");
+    b.Slider(kk::slider, "Мощность", 0, 1023, 1);
+
     if (b.beginRow())
     {
         if (b.Button("click"))
@@ -168,18 +164,6 @@ void build(sets::Builder &b)
         b.Date(kk::date, "Date");
         b.Time(kk::timew, "Time");
         b.DateTime(kk::datime, "Datime");
-
-        if (b.beginMenu("Submenu"))
-        {
-            if (b.beginGroup("Menu Switches")) // Переименовано для уникальности ID
-            {
-                b.Switch("sw1"_h, "switch 1");
-                b.Switch("sw2"_h, "switch 2");
-                b.Switch("sw3"_h, "switch 3");
-                b.endGroup();
-            }
-            b.endMenu();
-        }
         b.endGroup(); // Закрываем Group3
     }
 
@@ -196,7 +180,7 @@ void build(sets::Builder &b)
             if (b.Button(kk::btn2, "clear db", sets::Colors::Blue))
             {
                 Serial.println("clear db");
-                db.clear();
+                // db.clear();
                 db.update();
             }
             b.endButtons();
@@ -263,7 +247,8 @@ void updateOLED()
     // toString() может быть длинным, библиотека сама перенесет его,
     // если он не влезет в остаток строки
     // display.print(db[kk::txt].toString());
-    display.print(db[kk::color].toString());
+    display.print(WiFi.localIP());
+
     // --- 2. Статус и Выбор ---
     display.setTextSize(2);
     display.setCursor(0, 12);
@@ -279,16 +264,25 @@ void updateOLED()
     display.print(db[kk::slider].toFloat(), 1);
     // --- 4. Температура (Берем готовые значения из переменных) ---
     display.setTextSize(2);
+    // --- 4. Температура (Берем напрямую из БД) ---
+    display.setTextSize(2);
     display.setCursor(0, 49);
-    if (temp1 <= -100)
-        display.print("--"); // Проверка на ошибку
-    else
-        display.print(temp1, 1);
-    display.print(" ");
-    if (temp2 <= -100)
+
+    float t1 = db[kk::tmp1].toFloat();
+    float t2 = db[kk::tmp2].toFloat();
+
+    if (t1 <= -50 || t1 >= 125)
         display.print("--");
     else
-        display.print(temp2, 1);
+        display.print(t1, 1);
+
+    display.print(" ");
+
+    if (t2 <= -50 || t2 >= 125)
+        display.print("--");
+    else
+        display.print(t2, 1);
+
     display.display();
 }
 
@@ -296,28 +290,30 @@ void update(sets::Updater &upd)
 {
     upd.update(kk::lbl1, random(100));
     upd.update(kk::lbl2, millis());
-    upd.update(kk::tmp1, temp1);
-    upd.update(kk::tmp2, temp2);
+    // upd.update(kk::tmp1, temp1);
+    // upd.update(kk::tmp2, temp2);
+    upd.update(kk::tmp1, db[kk::tmp1].toFloat(), 2);
+    upd.update(kk::tmp2, db[kk::tmp2].toFloat(), 2);
 }
 
 void setup()
 {
     Serial.begin(115200);
     pinMode(LED_PIN, OUTPUT);
-    Serial.println("LED is ON");
+    // 1. Конфигурация пинов
+    pinMode(D7, OUTPUT);
+    analogWriteRange(1023);
+    analogWriteFreq(20000);
+    analogWrite(D7, 0);
 
+    Serial.println("LED is ON");
     // 1. Файловая система (LittleFS) — основа всего
     if (!LittleFS.begin())
     {
         Serial.println("LittleFS Error!");
     }
-    // 1. Питание дисплея
-    pinMode(DISPLAY_VCC_PIN, OUTPUT);
-    digitalWrite(DISPLAY_VCC_PIN, LOW);
-    delay(200);
-    digitalWrite(DISPLAY_VCC_PIN, HIGH);
-    delay(200); // Даем дисплею "проснуться"
-                // 2. Файловая система и БД (СТРОГО ДО sett.begin)
+
+    // 2. Файловая система и БД (СТРОГО ДО sett.begin)
 #ifdef ESP32
     LittleFS.begin(true);
 #else
@@ -405,8 +401,35 @@ void loop()
     }
     if (!sett.rtc.synced())
         timeIsSet = false;
-    // --- ВАШ ОСТАЛЬНОЙ КОД ---
-    digitalWrite(LED_PIN, db[kk::toggle].toBool());
+
+    // --- Управление пином D7 (Совмещаем Toggle и Slider) ---
+    static uint32_t tmrControl;
+    if (millis() - tmrControl >= 100)
+    {
+        tmrControl = millis();
+
+        static int lastVal = -1;
+        int currentVal = 0;
+
+        // Если выключатель ВКЛ, берем значение со слайдера
+        if (db[kk::toggle].toBool())
+        {
+            currentVal = constrain(db[kk::slider].toInt(), 0, 1023);
+        }
+        else
+        {
+            currentVal = 0; // Если выключатель ВЫКЛ, гасим пин
+        }
+
+        // Обновляем пин только если значение реально изменилось
+        if (currentVal != lastVal)
+        {
+            analogWrite(D7, currentVal);
+            lastVal = currentVal;
+            Serial.print("D7 PWM: ");
+            Serial.println(currentVal);
+        }
+    }
 
     // --- ТАЙМЕР 1: ЭКРАН (100 мс) ---
     static uint32_t tmrOLED;
@@ -416,24 +439,26 @@ void loop()
         updateOLED();
     }
 
-    // --- ТАЙМЕР 2: ДАТЧИКИ (2000 мс) ---
-    static uint32_t tmrTemp;
-    if (millis() - tmrTemp >= 2000)
+    // --- Датчики (раз в 5 секунд - для температуры чаще не нужно) ---
+    static uint32_t tmrSensors;
+    if (millis() - tmrSensors >= 5000)
     {
-        tmrTemp = millis();
+        tmrSensors = millis();
+
         float t1 = sensors.getTempC(addr1);
         float t2 = sensors.getTempC(addr2);
 
-        if (t1 != DEVICE_DISCONNECTED_C)
-        {
-            temp1 = t1;
-            db[kk::tmp1] = temp1;
-        }
-        if (t2 != DEVICE_DISCONNECTED_C)
-        {
-            temp2 = t2;
-            db[kk::tmp2] = temp2;
-        }
+        if (t1 > -50 && t1 < 125)
+            db[kk::tmp1] = round(t1 * 10.0f) / 10.0f; // 1 знак достаточно
+        else
+            db[kk::tmp1] = 0.0f;
+
+        if (t2 > -50 && t2 < 125)
+            db[kk::tmp2] = round(t2 * 10.0f) / 10.0f;
+        else
+            db[kk::tmp2] = 0.0f;
+
         sensors.requestTemperatures();
     }
+    sett.reload();
 }
