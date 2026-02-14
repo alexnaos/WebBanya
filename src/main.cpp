@@ -1,6 +1,8 @@
 
 #include <Arduino.h>
-#include "conf.h"
+#include "config.h"
+#include "ui_portal.h"
+
 // Создание объектов
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
@@ -9,162 +11,14 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 GyverDBFile db(&LittleFS, "/data.db");
 SettingsGyver sett("Slobanya3 разделен!", &db);
 sets::Logger logger(200);
-
+const DeviceAddress addr1 = {0x28, 0xB2, 0x54, 0x7F, 0x00, 0x00, 0x00, 0xCF};
+const DeviceAddress addr2 = {0x28, 0x39, 0xE2, 0x6E, 0x01, 0x00, 0x00, 0x12};
 // Глобальные переменные состояния
 float temp1 = 0;
 float temp2 = 0;
 uint32_t tmr;
 String longMessage = "";
 int16_t textX = 128;
-
-//sets::Logger logger(200);
-
-void runAutomation()
-{
-    String jsonStr = db[kk::logic].toString();
-    JsonDocument doc;
-    if (deserializeJson(doc, jsonStr) == DeserializationError::Ok)
-    {
-
-        // 2. Считываем правила из JSON
-        bool enabled = doc["enabled"] | false;
-        float tempSet = doc["temp_set"] | 20.0;
-        int hStart = doc["h_start"] | 0;
-        int hEnd = doc["h_end"] | 24;
-        String days = doc["days"] | "1,2,3,4,5,6,7";
-
-        // 3. Проверяем условия (Время + День недели + Температура)
-        bool timeOk = (rtc.hour() >= hStart && rtc.hour() < hEnd);
-        bool dayOk = (days.indexOf(String(rtc.weekDay())) != -1);
-        bool tempOk = (temp1 < tempSet); // temp1 мы берем из вашего loop
-
-        // 4. Управляем реле
-        if (enabled && timeOk && dayOk && tempOk)
-        {
-            digitalWrite(LED_PIN, HIGH); // Включить
-            db[kk::toggle] = true;       // Обновить статус в интерфейсе
-        }
-        else
-        {
-            digitalWrite(LED_PIN, LOW); // Выключить
-            db[kk::toggle] = false;
-        }
-    }
-}
-
-void loadLogicFromFile()
-{
-    if (LittleFS.exists("/logic.json"))
-    {
-        File f = LittleFS.open("/logic.json", "r");
-        if (f)
-        {
-            String content = f.readString();
-            f.close();
-
-            JsonDocument doc;
-            if (!deserializeJson(doc, content))
-            {
-                db[kk::logic] = content;
-                db.update(); // Для GyverDBFile сохраняем изменения
-                Serial.println("Logic updated from /logic.json");
-                runAutomation();
-            }
-        }
-    }
-    else
-    {
-        Serial.println("File /logic.json not found!");
-    }
-}
-
-void build(sets::Builder &b)
-{
-    if (b.build.isAction())
-    {
-        logger.print("Set: 0x");
-        logger.println(b.build.id, HEX);
-    }
-
-    if (b.beginGroup("Group 1")) // Группа 1
-    {
-        b.Input(kk::txt, "Text");
-        // b.Pass(kk::pass, "Password");
-        b.Label(kk::tmp1, "Дом");
-        b.Label(kk::tmp2, "Улица");
-        b.endGroup();
-    }
-    b.Switch(kk::toggle, "Реле");
-    b.Select(kk::selectw, "Выбор", "var1;var2;hello");
-    // b.Slider(kk::slider, "Мощность", -10, 10, 0.5, "deg");
-    b.Slider(kk::slider, "Мощность", 0, 1023, 1);
-
-    if (b.beginRow())
-    {
-        if (b.Button("click"))
-        {
-            Serial.println("click: " + String(b.build.pressed()));
-        }
-        if (b.ButtonHold("hold"))
-        {
-            Serial.println("hold: " + String(b.build.pressed()));
-        }
-        b.endRow();
-    }
-
-    if (b.beginGroup("Group3")) // Группа с датами и временем
-    {
-        b.Date(kk::date, "Date");
-        b.Time(kk::timew, "Time");
-        b.DateTime(kk::datime, "Datime");
-        b.endGroup(); // Закрываем Group3
-    }
-
-    // --- Блок системных кнопок ---
-    if (b.beginGroup("Система управления")) // Переименовано для уникальности ID
-    {
-        if (b.beginButtons())
-        {
-            if (b.Button(kk::btn1, "reload"))
-            {
-                Serial.println("reload");
-                b.reload();
-            }
-            if (b.Button(kk::btn2, "clear db", sets::Colors::Blue))
-            {
-                Serial.println("clear db");
-                // db.clear();
-                db.update();
-            }
-            b.endButtons();
-        }
-        b.endGroup(); // Закрываем Систему управления
-    }
-
-    // ТЕПЕРЬ СЦЕНАРИЙ (вызывается на «чистом» уровне)
-    if (b.beginGroup("Сценарий из файла"))
-    {
-        // 1. Читаем файл (убедитесь, что LittleFS.begin() в setup)
-        if (LittleFS.exists("/logic.json"))
-        {
-            File f = LittleFS.open("/logic.json", "r");
-            db[kk::logic] = f.readString(); // Записываем содержимое файла в ключ базы
-            f.close();
-        }
-
-        // 2. Выводим Input
-        b.Input(kk::logic, "JSON код файла");
-
-        // 3. Кнопка
-        if (b.Button("ВЫПОЛНИТЬ СЦЕНАРИЙ", sets::Colors::Green))
-        {
-            runAutomation();
-            Serial.println("Manual run executed");
-        }
-
-        b.endGroup(); // Закрываем Сценарий из файла
-    }
-}
 
 void updateOLED()
 {
@@ -248,15 +102,6 @@ void updateOLED()
     display.display();
 }
 
-void update(sets::Updater &upd)
-{
-    upd.update(kk::lbl1, random(100));
-    upd.update(kk::lbl2, millis());
-    // upd.update(kk::tmp1, temp1);
-    // upd.update(kk::tmp2, temp2);
-    upd.update(kk::tmp1, db[kk::tmp1].toFloat(), 2);
-    upd.update(kk::tmp2, db[kk::tmp2].toFloat(), 2);
-}
 
 void setup()
 {
@@ -306,8 +151,7 @@ void setup()
         db[kk::logic] = "{}";
         db.update();
     }
-    loadLogicFromFile();
-
+   
     // 3. Железо
     Wire.begin();
     if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
@@ -331,13 +175,10 @@ void setup()
     sett.rtc = unix;
     Serial.print("RTC Unix: ");
     Serial.println(unix);
-
-    display.clearDisplay();
+    display.clearDisplay();    
     display.display();
-    sensors.begin();
-    sensors.setWaitForConversion(false);
-    sensors.requestTemperatures();
-
+    initSensors();
+   
     // 4. Сеть
     WiFi.mode(WIFI_AP_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
@@ -351,6 +192,10 @@ void setup()
     sett.config.theme = sets::Colors::Green;
 
     setStampZone(3); // Часовой пояс
+
+
+     sett.onBuild(build);
+    sett.onUpdate(update);
 }
 
 void loop()
@@ -415,27 +260,7 @@ void loop()
         tmrOLED = millis();
         updateOLED();
     }
-
-    // --- Датчики (раз в 5 секунд - для температуры чаще не нужно) ---
-    static uint32_t tmrSensors;
-    if (millis() - tmrSensors >= 5000)
-    {
-        tmrSensors = millis();
-
-        float t1 = sensors.getTempC(addr1);
-        float t2 = sensors.getTempC(addr2);
-
-        if (t1 > -50 && t1 < 125)
-            db[kk::tmp1] = round(t1 * 10.0f) / 10.0f; // 1 знак достаточно
-        else
-            db[kk::tmp1] = 0.0f;
-
-        if (t2 > -50 && t2 < 125)
-            db[kk::tmp2] = round(t2 * 10.0f) / 10.0f;
-        else
-            db[kk::tmp2] = 0.0f;
-
-        sensors.requestTemperatures();
-    }
+handleSensors();  // Опрос датчиков
+   
     sett.reload();
 }

@@ -1,6 +1,5 @@
-#ifndef CONF_H
-#define CONF_H
-
+#ifndef CONFIG_H
+#define CONFIG_H
 #include <Arduino.h>
 #include <GyverDBFile.h>
 #include <LittleFS.h>
@@ -23,12 +22,6 @@
 // --- Сеть ---
 #define WIFI_SSID "Sloboda100"
 #define WIFI_PASS "2716192023"
-
-// --- Адреса датчиков ---
-// Используем extern, если хотим инициализировать их в main.cpp, 
-// или оставляем так, если файл подключается один раз.
-const DeviceAddress addr1 = {0x28, 0xB2, 0x54, 0x7F, 0x00, 0x00, 0x00, 0xCF};
-const DeviceAddress addr2 = {0x28, 0x39, 0xE2, 0x6E, 0x01, 0x00, 0x00, 0x12};
 
 // Переменные
 enum kk : size_t
@@ -56,19 +49,18 @@ enum kk : size_t
     logic,
 };
 
-// === ПРОТОТИПЫ ФУНКЦИЙ (согласно скриншоту) ===
-void runAutomation();
-void loadLogicFromFile();
-void build(sets::Builder& b);
+// ОБЪЯВЛЕНИЯ ОБЪЕКТОВ (через extern)
+// Это говорит компилятору: "Объект существует, но создан он в другом месте"
+extern GyverDBFile db;
+extern SettingsGyver sett;
+extern sets::Logger logger;
+extern float temp1;
+extern float temp2;
+
+void initSensors();
+void handleSensors();
 void updateOLED();
-void update(sets::Updater& u);
 void setup();
 void loop();
-
-// === ОБЪЯВЛЕНИЕ ВНЕШНИХ ОБЪЕКТОВ (опционально) ===
-// Это позволит обращаться к ним из других .cpp файлов, если вы их добавите
-extern sets::Logger logger;
-extern DallasTemperature sensors;
-extern Adafruit_SSD1306 display;
 
 #endif
