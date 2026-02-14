@@ -1,3 +1,4 @@
+
 #include <Arduino.h>
 #include <GyverDBFile.h>
 #include <LittleFS.h>
@@ -6,24 +7,24 @@
 #include <Adafruit_SSD1306.h>
 #include <GyverDS3231.h>
 #include <ArduinoJson.h>
+#define DISPLAY_VCC_PIN D6 // Пин питания дисплея
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1 // Зависит от платы, обычно -1
 #include <OneWire.h>
 #include <DallasTemperature.h>
+
 // 2. Ваши проверенные адреса
 DeviceAddress addr1 = {0x28, 0xB2, 0x54, 0x7F, 0x00, 0x00, 0x00, 0xCF};
 DeviceAddress addr2 = {0x28, 0x39, 0xE2, 0x6E, 0x01, 0x00, 0x00, 0x12};
 // 1. Настройка пина и библиотек
 #define ONE_WIRE_BUS D5 // Пин D1 на Wemos D1 Mini (GPIO5)
-#define LED_PIN D7
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
-// GyverDS3231 rtc;
-
-GyverDS3231 ds; // Железный модуль (адрес 0x68)
-StampKeeper sk; // Программные часы (из SettingsGyver)
-
+GyverDS3231 rtc;
+// 3. Глобальные переменные для хранения температуры
+float temp1 = 0;
+float temp2 = 0;
 uint32_t tmr;
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 // Глобальные переменные для управления прокруткой
@@ -33,8 +34,9 @@ int16_t textX = 128; // Начальная позиция
 #define WIFI_SSID "Sloboda100"
 #define WIFI_PASS "2716192023"
 #define TEMP_UPDATE_INTERVAL 1000 // 0.5 секунд
+#define LED_PIN D7
 GyverDBFile db(&LittleFS, "/data.db");
-SettingsGyver sett("Sloboda43 work!", &db);
+SettingsGyver sett("Slobanya2!", &db);
 
 // Переменные
 enum kk : size_t
@@ -78,23 +80,22 @@ void runAutomation()
         int hEnd = doc["h_end"] | 24;
         String days = doc["days"] | "1,2,3,4,5,6,7";
 
-        // // 3. Проверяем условия (Время + День недели + Температура)
-        // bool timeOk = (sk.hour() >= hStart && sk.hour() < hEnd);
-        // bool dayOk = (days.indexOf(String(rtc.weekDay())) != -1);
-        // bool tempOk = (kk::tmp1 < tempSet); // temp1 мы берем из вашего loop
-        //                                     // float t1 = db[kk::tmp1].toFloat();
+        // 3. Проверяем условия (Время + День недели + Температура)
+        bool timeOk = (rtc.hour() >= hStart && rtc.hour() < hEnd);
+        bool dayOk = (days.indexOf(String(rtc.weekDay())) != -1);
+        bool tempOk = (temp1 < tempSet); // temp1 мы берем из вашего loop
 
-        // // 4. Управляем реле
-        // if (enabled && timeOk && dayOk && tempOk)
-        // {
-        //     digitalWrite(LED_PIN, HIGH); // Включить
-        //     db[kk::toggle] = true;       // Обновить статус в интерфейсе
-        // }
-        // else
-        // {
-        //     digitalWrite(LED_PIN, LOW); // Выключить
-        //     db[kk::toggle] = false;
-        // }
+        // 4. Управляем реле
+        if (enabled && timeOk && dayOk && tempOk)
+        {
+            digitalWrite(LED_PIN, HIGH); // Включить
+            db[kk::toggle] = true;       // Обновить статус в интерфейсе
+        }
+        else
+        {
+            digitalWrite(LED_PIN, LOW); // Выключить
+            db[kk::toggle] = false;
+        }
     }
 }
 
@@ -126,7 +127,6 @@ void loadLogicFromFile()
 
 void build(sets::Builder &b)
 {
-    b.Time(kk::timew, "Время системы"); // Это заставит браузер синхро
     if (b.build.isAction())
     {
         logger.print("Set: 0x");
@@ -139,7 +139,6 @@ void build(sets::Builder &b)
         // b.Pass(kk::pass, "Password");
         b.Label(kk::tmp1, "Дом");
         b.Label(kk::tmp2, "Улица");
-
         b.endGroup();
     }
     // Третий аргумент — это само значение, которое отобразится справа
@@ -148,13 +147,7 @@ void build(sets::Builder &b)
     b.Color(kk::color, "Цвет");
     b.Switch(kk::toggle, "Реле");
     b.Select(kk::selectw, "Выбор", "var1;var2;hello");
-    // b.Slider(kk::slider, "Мощность", -10, 10, 0.5, "deg");
-    // Правильный формат: слайдер(ID, имя, мин, макс, шаг)
-    b.Slider(kk::slider, "Мощность", 0, 1023, 1);
-
-    // Используйте указатель (&), чтобы библиотека сама писала значение в базу
-    // b.Slider(&db[kk::slider], gh::Int).name("Мощность").range(0, 1023, 1);
-
+    b.Slider(kk::slider, "Мощность", -10, 10, 0.5, "deg");
     b.Slider2(kk::sldmin, kk::sldmax, "Установка", -10, 10, 0.5, "deg");
     // b.Log(logger);
     if (b.beginRow())
@@ -173,7 +166,7 @@ void build(sets::Builder &b)
     if (b.beginGroup("Group3")) // Группа с датами и временем
     {
         b.Date(kk::date, "Date");
-        // b.Time(kk::timew, "Time");
+        b.Time(kk::timew, "Time");
         b.DateTime(kk::datime, "Datime");
 
         if (b.beginMenu("Submenu"))
@@ -238,27 +231,39 @@ void build(sets::Builder &b)
 
 void updateOLED()
 {
-
     display.clearDisplay();
-    display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
 
-    // Вывод времени
+    // --- ЛЕВЫЙ БЛОК (0-63 пикселя): ВРЕМЯ ---
     display.setCursor(0, 0);
-    if (sk.hour() < 10)
+    // Часы
+    if (rtc.hour() < 10)
         display.print('0');
-    display.print(sk.hour());
+    display.print(rtc.hour());
     display.print(':');
-    if (sk.minute() < 10)
-        display.print('0');
-    display.print(sk.minute());
 
-    // Мигающая звездочка в конце этой же строки
+    // Минуты
+    if (rtc.minute() < 10)
+        display.print('0');
+    display.print(rtc.minute());
+    display.print(':');
+
+    // Секунды
+    if (rtc.second() < 10)
+        display.print('0');
+    display.print(rtc.second());
+    // Мигающая звездочка синхронизации
     if (sett.rtc.synced() && millis() % 1000 < 500)
     {
         display.print(" *");
     }
-
+    // --- ПРАВЫЙ БЛОК (64-127 пикселей): ТЕКСТ ---
+    display.setCursor(64, 0);
+    // toString() может быть длинным, библиотека сама перенесет его,
+    // если он не влезет в остаток строки
+    // display.print(db[kk::txt].toString());
+    display.print(db[kk::color].toString());
     // --- 2. Статус и Выбор ---
     display.setTextSize(2);
     display.setCursor(0, 12);
@@ -272,26 +277,18 @@ void updateOLED()
     display.setCursor(0, 30);
     display.print("R:");
     display.print(db[kk::slider].toFloat(), 1);
-
-    // --- 4. Температура (Берем напрямую из БД) ---
+    // --- 4. Температура (Берем готовые значения из переменных) ---
     display.setTextSize(2);
     display.setCursor(0, 49);
-
-    float t1 = db[kk::tmp1].toFloat();
-    float t2 = db[kk::tmp2].toFloat();
-
-    if (t1 <= -50 || t1 >= 125)
-        display.print("--");
+    if (temp1 <= -100)
+        display.print("--"); // Проверка на ошибку
     else
-        display.print(t1, 1);
-
+        display.print(temp1, 1);
     display.print(" ");
-
-    if (t2 <= -50 || t2 >= 125)
+    if (temp2 <= -100)
         display.print("--");
     else
-        display.print(t2, 1);
-
+        display.print(temp2, 1);
     display.display();
 }
 
@@ -299,133 +296,144 @@ void update(sets::Updater &upd)
 {
     upd.update(kk::lbl1, random(100));
     upd.update(kk::lbl2, millis());
-    // Явно преобразуем значение из БД в float для апдейтера
-    upd.update(kk::tmp1, db[kk::tmp1].toFloat(), 2);
-    upd.update(kk::tmp2, db[kk::tmp2].toFloat(), 2);
+    upd.update(kk::tmp1, temp1);
+    upd.update(kk::tmp2, temp2);
 }
 
 void setup()
 {
-    // 1. Сначала СЕРИАЛ (иначе ничего не увидим)
     Serial.begin(115200);
-    delay(500);
-    Serial.println("System Start...");
+    pinMode(LED_PIN, OUTPUT);
+    Serial.println("LED is ON");
 
-    // 2. Шина I2C (ЗАПУСКАТЬ ПЕРВОЙ)
-    Wire.begin();
-    Wire.setClock(100000); // Уменьшил до 100кГц для стабильности
-
-    // 3. Конфигурация железа
-    pinMode(D7, OUTPUT);
-    analogWriteRange(1023);
-    analogWriteFreq(20000);
-    analogWrite(D7, 0);
-
-    // 4. Дисплей и Часы (после Wire.begin)
-    if (display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
-    {
-        display.clearDisplay();
-        display.setTextSize(1);
-        display.setTextColor(SSD1306_WHITE);
-        display.setCursor(0, 0);
-        display.println("Initializing...");
-        display.display();
-    }
-
-    ds.begin();
-    Datime dt = ds.getTime();
-    sk = dt.getUnix(); // Синхронизация
-    Serial.println("Time Synced!");
-
-    // 5. База данных и Файлы
+    // 1. Файловая система (LittleFS) — основа всего
     if (!LittleFS.begin())
-        Serial.println("FS Error");
+    {
+        Serial.println("LittleFS Error!");
+    }
+    // 1. Питание дисплея
+    pinMode(DISPLAY_VCC_PIN, OUTPUT);
+    digitalWrite(DISPLAY_VCC_PIN, LOW);
+    delay(200);
+    digitalWrite(DISPLAY_VCC_PIN, HIGH);
+    delay(200); // Даем дисплею "проснуться"
+                // 2. Файловая система и БД (СТРОГО ДО sett.begin)
+#ifdef ESP32
+    LittleFS.begin(true);
+#else
+    LittleFS.begin();
+#endif
     db.begin();
-    db.init(kk::slider, 0.0f);
+    // Инициализируем базу (только если ключей еще нет)
+    db.init(kk::txt, "text");
     db.init(kk::tmp1, 0.0f);
     db.init(kk::tmp2, 0.0f);
-    // ... ваши db.init ...
+    db.init(kk::pass, "some pass");
+    db.init(kk::uintw, 64u);
+    db.init(kk::intw, -10);
+    db.init(kk::int64w, 1234567ll);
+    db.init(kk::color, 0xff0000);
+    db.init(kk::toggle, true);
+    db.init(kk::slider, -3.5);
+    db.init(kk::selectw, (uint8_t)1);
+    db.init(kk::date, 1719941932);
+    db.init(kk::timew, 60);
+    db.init(kk::datime, 1719941932);
+    db.init(kk::sldmin, -5);
+    db.init(kk::sldmax, 5);
+    setStampZone(3);
+
+    // Проверяем, создана ли база
+    if (!db.has(kk::logic))
+    {
+        db[kk::logic] = "{}";
+        db.update();
+    }
     loadLogicFromFile();
 
-    // 6. Датчики
+    // 3. Железо
+    Wire.begin();
+    if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
+    {
+        Serial.println(F("OLED Error"));
+    }
+    rtc.begin();
+    if (rtc.isOK())
+    {
+        // Прямое приведение объекта rtc к типу Datime
+        // Библиотека сама сконвертирует время в нужный формат без вызова getUnix()
+        Datime dt = rtc;
+        sett.rtc = dt.getUnix();
+        Serial.println("RTC OK: Time loaded");
+    }
+    else
+    {
+        Serial.println("RTC NOT FOUND (OK: 0)");
+    }
+
+    display.clearDisplay();
+    display.display();
     sensors.begin();
     sensors.setWaitForConversion(false);
     sensors.requestTemperatures();
 
-    // 7. Сеть (БЕЗ блокирующего цикла while)
-    WiFi.mode(WIFI_STA);
+    // 4. Сеть
+    WiFi.mode(WIFI_AP_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
-    Serial.println("WiFi connecting in background...");
+    // ... цикл подключения ...
+    WiFi.softAP("AP ESP");
 
-    // 8. Интерфейс
+    // 5. Интерфейс (ПОСЛЕ БД)
     sett.begin();
     sett.onBuild(build);
     sett.onUpdate(update);
-    setStampZone(3);
+    sett.config.theme = sets::Colors::Green;
 
-    Serial.println("Setup Done!");
+    setStampZone(3); // Часовой пояс
 }
 
 void loop()
 {
-    sett.tick();
-    sk.tick();
-
-    // --- Синхронизация RTC (раз в час, а не минуту, чтобы не вешать шину) ---
-    static uint32_t syncTmr;
-    if (millis() - syncTmr >= 3600000)
+    sett.tick(); // Обработка веб-интерфейса
+    static bool timeIsSet = false;
+    if (sett.rtc.synced() && !timeIsSet)
     {
-        syncTmr = millis();
-        Datime dt(sk.getUnix());
-        ds.setTime(dt);
+        // Синхронизируем железный модуль из браузера
+        rtc.setUnix(sett.rtc.getUnix());
+        timeIsSet = true;
+        Serial.println("Synced!");
     }
+    if (!sett.rtc.synced())
+        timeIsSet = false;
+    // --- ВАШ ОСТАЛЬНОЙ КОД ---
+    digitalWrite(LED_PIN, db[kk::toggle].toBool());
 
-    // --- Слайдер (обработка только при изменении) ---
-    static uint32_t tmrSlider;
-    if (millis() - tmrSlider >= 100)
-    {
-        tmrSlider = millis();
-        int pwmValue = constrain((int)db[kk::slider].toInt(), 0, 1023); // Используйте toInt()
-        static int lastPwmValue = -1;
-        if (pwmValue != lastPwmValue)
-        {
-            analogWrite(D7, pwmValue);
-            lastPwmValue = pwmValue;
-        }
-    }
-
-    // --- Дисплей (1 раз в секунду) ---
+    // --- ТАЙМЕР 1: ЭКРАН (100 мс) ---
     static uint32_t tmrOLED;
-    if (millis() - tmrOLED >= 1000)
+    if (millis() - tmrOLED >= 100)
     {
         tmrOLED = millis();
-        updateOLED(); // Внутри должен быть display.display() в конце!
+        updateOLED();
     }
 
-    // --- Датчики (раз в 5 секунд - для температуры чаще не нужно) ---
-    static uint32_t tmrSensors;
-    if (millis() - tmrSensors >= 5000)
+    // --- ТАЙМЕР 2: ДАТЧИКИ (2000 мс) ---
+    static uint32_t tmrTemp;
+    if (millis() - tmrTemp >= 2000)
     {
-        tmrSensors = millis();
-
+        tmrTemp = millis();
         float t1 = sensors.getTempC(addr1);
         float t2 = sensors.getTempC(addr2);
 
-        if (t1 > -50 && t1 < 125)
-            db[kk::tmp1] = round(t1 * 10.0f) / 10.0f; // 1 знак достаточно
-        else
-            db[kk::tmp1] = 0.0f;
-
-        if (t2 > -50 && t2 < 125)
-            db[kk::tmp2] = round(t2 * 10.0f) / 10.0f;
-        else
-            db[kk::tmp2] = 0.0f;
-
+        if (t1 != DEVICE_DISCONNECTED_C)
+        {
+            temp1 = t1;
+            db[kk::tmp1] = temp1;
+        }
+        if (t2 != DEVICE_DISCONNECTED_C)
+        {
+            temp2 = t2;
+            db[kk::tmp2] = temp2;
+        }
         sensors.requestTemperatures();
-
-        // Мягко обновляем данные в браузере (не страницу целиком!)
-        sett.reload();
-        
     }
 }
-
