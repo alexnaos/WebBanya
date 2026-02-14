@@ -136,6 +136,7 @@ void build(sets::Builder &b)
         // b.Pass(kk::pass, "Password");
         b.Label(kk::tmp1, "Дом");
         b.Label(kk::tmp2, "Улица");
+
         b.endGroup();
     }
     // Третий аргумент — это само значение, которое отобразится справа
@@ -258,18 +259,26 @@ void updateOLED()
     display.setCursor(0, 30);
     display.print("R:");
     display.print(db[kk::slider].toFloat(), 1);
-    // --- 4. Температура (Берем готовые значения из переменных) ---
+
+    // --- 4. Температура (Берем напрямую из БД) ---
     display.setTextSize(2);
     display.setCursor(0, 49);
-    if (temp1 <= -100)
-        display.print("--"); // Проверка на ошибку
-    else
-        display.print(temp1, 1);
-    display.print(" ");
-    if (temp2 <= -100)
+
+    float t1 = db[kk::tmp1].toFloat();
+    float t2 = db[kk::tmp2].toFloat();
+
+    if (t1 <= -50 || t1 >= 125)
         display.print("--");
     else
-        display.print(temp2, 1);
+        display.print(t1, 1);
+
+    display.print(" ");
+
+    if (t2 <= -50 || t2 >= 125)
+        display.print("--");
+    else
+        display.print(t2, 1);
+
     display.display();
 }
 
@@ -277,8 +286,13 @@ void update(sets::Updater &upd)
 {
     upd.update(kk::lbl1, random(100));
     upd.update(kk::lbl2, millis());
-    upd.update(kk::tmp1, temp1);
-    upd.update(kk::tmp2, temp2);
+    // upd.update(kk::tmp1, temp1);
+    // upd.update(kk::tmp2, temp2);
+    // upd.update(kk::tmp1, db[kk::tmp1]);
+    // upd.update(kk::tmp2, db[kk::tmp2]);
+    // Явно преобразуем значение из БД в float для апдейтера
+    upd.update(kk::tmp1, db[kk::tmp1].toFloat());
+    upd.update(kk::tmp2, db[kk::tmp2].toFloat());
 }
 
 void setup()
@@ -343,22 +357,17 @@ void setup()
 
     setStampZone(3);
 }
-
 void loop()
 {
-    // 1. Сетевой тик должен быть первым и самым частым
     sett.tick();
 
+    // --- Слайдер ---
     static uint32_t tmrSlider;
-    static int lastPwmValue = -1;
-
-    // 2. Слайдер: ограничим частоту чтения из БД
     if (millis() - tmrSlider >= 100)
-    { // 10 раз в сек вполне достаточно
+    {
         tmrSlider = millis();
-        int pwmValue = (int)db[kk::slider].toFloat();
-        pwmValue = constrain(pwmValue, 0, 1023);
-
+        int pwmValue = constrain((int)db[kk::slider].toFloat(), 0, 1023);
+        static int lastPwmValue = -1;
         if (pwmValue != lastPwmValue)
         {
             analogWrite(D7, pwmValue);
@@ -366,33 +375,41 @@ void loop()
         }
     }
 
-    // 3. Дисплей и Датчики (РАЗНОСИМ ВО ВРЕМЕНИ)
+    // --- Дисплей ---
     static uint32_t tmrOLED;
     if (millis() - tmrOLED >= 500)
     {
         tmrOLED = millis();
         updateOLED();
-        // Даем процессору "выдохнуть" после тяжелого вывода на OLED
-        yield();
     }
+
+    // --- Датчики ---
 
     static uint32_t tmrSensors;
     if (millis() - tmrSensors >= 2000)
     {
-        // Проверяем, чтобы датчики не читались одновременно с OLED
-        if (millis() - tmrOLED > 100)
-        {
-            tmrSensors = millis();
+        tmrSensors = millis();
 
-            float t1 = sensors.getTempC(addr1);
-            float t2 = sensors.getTempC(addr2);
+        float t1 = sensors.getTempC(addr1);
+        float t2 = sensors.getTempC(addr2);
 
-            if (t1 > -50 && t1 < 125)
-                db[kk::tmp1] = t1;
-            if (t2 > -50 && t2 < 125)
-                db[kk::tmp2] = t2;
+        // Записываем в базу данных
+        if (t1 > -50 && t1 < 125)
+            db[kk::tmp1] = t1;
+        else
+            db[kk::tmp1] = 0.0f;
 
-            sensors.requestTemperatures();
-        }
+        if (t2 > -50 && t2 < 125)
+            db[kk::tmp2] = t2;
+        else
+            db[kk::tmp2] = 0.0f;
+
+        // Запрашиваем новые данные на будущее
+        sensors.requestTemperatures();
+        // Serial.print("DB Temp 1: ");
+        // Serial.println(db[kk::tmp1].toFloat());
+
+        // ПРИНУДИТЕЛЬНО ПЕРЕЗАГРУЖАЕМ ИНТЕРФЕЙС (чтобы данные в вебе обновились)
+        sett.reload();
     }
 }
