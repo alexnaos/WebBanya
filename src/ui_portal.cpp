@@ -74,15 +74,23 @@ void update(sets::Updater &upd)
     upd.update(kk::tmp1, db[kk::tmp1].toFloat(), 2);
     upd.update(kk::tmp2, db[kk::tmp2].toFloat(), 2);
 
-    // Берем значение из БД (куда его сохранил виджет DateTime)
-    uint32_t dbUnix = db[kk::date].toInt32();
-
-    // Если время в базе отличается от системного более чем на 5 секунд
-    if (abs((long)dbUnix - (long)time(NULL)) > 5)
+    // 2. Медленная синхронизация (раз в 1 минуту)
+    static uint32_t syncTmr = 0;
+    if (millis() - syncTmr >= 60000)
     {
-        rtc.setUnix(dbUnix);
-        timeval tv = {(time_t)dbUnix, 0};
-        settimeofday(&tv, NULL);
-        Serial.println("RTC: Синхронизировано по разнице значений!");
+        syncTmr = millis();
+
+        uint32_t dbUnix = db[kk::date].toInt32();
+        uint32_t sysUnix = (uint32_t)time(NULL);
+        // Если в базе время новее или сильно отличается (например, после ручной настройки в UI)
+        if (abs((long)dbUnix - (long)sysUnix) > 5)
+        {
+            rtc.setUnix(dbUnix);
+
+            timeval tv = {(time_t)dbUnix, 0};
+            settimeofday(&tv, NULL);
+
+            Serial.println("RTC: Плановая синхронизация выполнена!");
+        }
     }
 }

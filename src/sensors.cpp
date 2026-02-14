@@ -41,7 +41,7 @@ void updateOLED() {
     if (dt.second < 10) display.print('0');
     display.print(dt.second);
 
-    if (millis() % 1000 < 500) display.print("**");
+    if (millis() % 1000 < 500) display.print(" **");
 
     // --- СТАТУС WIFI ---
     display.setCursor(64, 0);
