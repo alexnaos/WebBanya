@@ -21,8 +21,8 @@ OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 GyverDS3231 rtc;
 // 3. Глобальные переменные для хранения температуры
-float temp1 = 0;
-float temp2 = 0;
+// float temp1 = 0;
+// float temp2 = 0;
 uint32_t tmr;
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 // Глобальные переменные для управления прокруткой
@@ -80,7 +80,8 @@ void runAutomation()
         // 3. Проверяем условия (Время + День недели + Температура)
         bool timeOk = (rtc.hour() >= hStart && rtc.hour() < hEnd);
         bool dayOk = (days.indexOf(String(rtc.weekDay())) != -1);
-        bool tempOk = (temp1 < tempSet); // temp1 мы берем из вашего loop
+        bool tempOk = (kk::tmp1 < tempSet); // temp1 мы берем из вашего loop
+                                            // float t1 = db[kk::tmp1].toFloat();
 
         // // 4. Управляем реле
         // if (enabled && timeOk && dayOk && tempOk)
@@ -286,34 +287,39 @@ void update(sets::Updater &upd)
 {
     upd.update(kk::lbl1, random(100));
     upd.update(kk::lbl2, millis());
-    // upd.update(kk::tmp1, temp1);
-    // upd.update(kk::tmp2, temp2);
-    // upd.update(kk::tmp1, db[kk::tmp1]);
-    // upd.update(kk::tmp2, db[kk::tmp2]);
     // Явно преобразуем значение из БД в float для апдейтера
-    upd.update(kk::tmp1, db[kk::tmp1].toFloat());
-    upd.update(kk::tmp2, db[kk::tmp2].toFloat());
+    upd.update(kk::tmp1, db[kk::tmp1].toFloat(), 2);
+    upd.update(kk::tmp2, db[kk::tmp2].toFloat(), 2);
+
 }
 
 void setup()
 {
     delay(1000); // 3 секунды — слишком много, 1 сек достаточно
     Serial.begin(115200);
-
     // 1. Конфигурация пинов
     pinMode(D7, OUTPUT);
     analogWriteRange(1023);
-    analogWriteFreq(5000);
+    analogWriteFreq(20000);
     analogWrite(D7, 0);
 
     // 2. База данных и файлы (СИСТЕМА)
     if (!LittleFS.begin())
         Serial.println("FS Error");
     db.begin();
-
     // Инициализация ключей...
     db.init(kk::slider, 0.0f); // убедитесь, что тип данных совпадает (float)
+    db.init(kk::txt, "text");
+    db.init(kk::tmp1, 0.0f);
+    db.init(kk::tmp2, 0.0f);
+
     // ... остальные db.init ...
+
+    if (!db.has(kk::logic))
+    {
+        db[kk::logic] = "{}";
+        db.update();
+    }
 
     loadLogicFromFile();
 
@@ -337,11 +343,9 @@ void setup()
     sensors.begin();
     sensors.setWaitForConversion(false);
     sensors.requestTemperatures();
-
     // 4. Сеть (в самом конце)
     WiFi.mode(WIFI_STA); // Если не используете AP, лучше только STA
     WiFi.begin(WIFI_SSID, WIFI_PASS);
-
     uint8_t tries = 20;
     while (WiFi.status() != WL_CONNECTED && tries--)
     {
@@ -349,18 +353,16 @@ void setup()
         Serial.print(".");
     }
     Serial.println(WiFi.localIP());
-
     // 5. Запуск интерфейса
     sett.begin();
     sett.onBuild(build);
     sett.onUpdate(update);
-
     setStampZone(3);
 }
+
 void loop()
 {
     sett.tick();
-
     // --- Слайдер ---
     static uint32_t tmrSlider;
     if (millis() - tmrSlider >= 100)
@@ -384,7 +386,6 @@ void loop()
     }
 
     // --- Датчики ---
-
     static uint32_t tmrSensors;
     if (millis() - tmrSensors >= 2000)
     {
@@ -393,23 +394,22 @@ void loop()
         float t1 = sensors.getTempC(addr1);
         float t2 = sensors.getTempC(addr2);
 
-        // Записываем в базу данных
+        // Записываем с округлением до 2 знаков
         if (t1 > -50 && t1 < 125)
-            db[kk::tmp1] = t1;
+            db[kk::tmp1] = round(t1 * 100.0f) / 100.0f;
         else
             db[kk::tmp1] = 0.0f;
 
         if (t2 > -50 && t2 < 125)
-            db[kk::tmp2] = t2;
+            db[kk::tmp2] = round(t2 * 100.0f) / 100.0f;
         else
             db[kk::tmp2] = 0.0f;
 
-        // Запрашиваем новые данные на будущее
         sensors.requestTemperatures();
+
         // Serial.print("DB Temp 1: ");
         // Serial.println(db[kk::tmp1].toFloat());
-
-        // ПРИНУДИТЕЛЬНО ПЕРЕЗАГРУЖАЕМ ИНТЕРФЕЙС (чтобы данные в вебе обновились)
+        //  ПРИНУДИТЕЛЬНО ПЕРЕЗАГРУЖАЕМ ИНТЕРФЕЙС (чтобы данные в вебе обновились)
         sett.reload();
     }
 }
