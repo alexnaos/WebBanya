@@ -429,4 +429,3 @@ void loop()
     }
 }
 
-//'class SettingsGyver' has no member named 'update'; did you mean 'updater'?
