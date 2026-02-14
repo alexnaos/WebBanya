@@ -7,6 +7,8 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 static uint32_t tmr_temp;
 static uint32_t tmr_oled;
+float temp1 = 0;
+float temp2 = 0;
 
 void initSensors() {
     // Инициализация OLED

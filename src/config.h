@@ -49,16 +49,22 @@ enum kk : size_t
     logic,
 };
 
+const DeviceAddress addr1 = {0x28, 0xB2, 0x54, 0x7F, 0x00, 0x00, 0x00, 0xCF};
+const DeviceAddress addr2 = {0x28, 0x39, 0xE2, 0x6E, 0x01, 0x00, 0x00, 0x12};
+// Глобальные переменные состояния
+uint32_t tmr;
+
 // ОБЪЯВЛЕНИЯ ОБЪЕКТОВ (через extern)
 // Это говорит компилятору: "Объект существует, но создан он в другом месте"
 extern GyverDBFile db;
 extern SettingsGyver sett;
 extern sets::Logger logger;
 extern Adafruit_SSD1306 display; // Объявляем, что дисплей общий
+extern GyverDS3231 rtc;
 extern float temp1;
 extern float temp2;
 
-
+void initTime();
 void initSensors();
 void updateOLED();
 void handleSensors();

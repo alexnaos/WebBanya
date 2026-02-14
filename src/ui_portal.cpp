@@ -8,7 +8,9 @@ void build(sets::Builder &b)
     {
         logger.print("Set: 0x");
         logger.println(b.build.id, HEX);
+        b.DateTime("rtc"); // Дата и время в одном флаконе
     }
+    b.Label("Текущее время RTC: " + sett.rtc.toString());
 
     if (b.beginGroup("Group 1")) // Группа 1
     {
@@ -19,9 +21,8 @@ void build(sets::Builder &b)
         b.endGroup();
     }
     b.Switch(kk::toggle, "Реле");
-    b.Select(kk::selectw, "Выбор", "var1;var2;hello");
-    // b.Slider(kk::slider, "Мощность", -10, 10, 0.5, "deg");
     b.Slider(kk::slider, "Мощность", 0, 1023, 1);
+    b.Select(kk::selectw, "Выбор", "var1;var2;hello");
 
     if (b.beginRow())
     {
@@ -35,7 +36,6 @@ void build(sets::Builder &b)
         }
         b.endRow();
     }
-
     if (b.beginGroup("Group3")) // Группа с датами и временем
     {
         b.Date(kk::date, "Date");
@@ -43,7 +43,6 @@ void build(sets::Builder &b)
         b.DateTime(kk::datime, "Datime");
         b.endGroup(); // Закрываем Group3
     }
-
     // --- Блок системных кнопок ---
     if (b.beginGroup("Система управления")) // Переименовано для уникальности ID
     {
@@ -64,8 +63,6 @@ void build(sets::Builder &b)
         }
         b.endGroup(); // Закрываем Систему управления
     }
-
-    
 }
 
 void update(sets::Updater &upd)
@@ -76,4 +73,16 @@ void update(sets::Updater &upd)
     // upd.update(kk::tmp2, temp2);
     upd.update(kk::tmp1, db[kk::tmp1].toFloat(), 2);
     upd.update(kk::tmp2, db[kk::tmp2].toFloat(), 2);
+
+    // Берем значение из БД (куда его сохранил виджет DateTime)
+    uint32_t dbUnix = db[kk::date].toInt32();
+
+    // Если время в базе отличается от системного более чем на 5 секунд
+    if (abs((long)dbUnix - (long)time(NULL)) > 5)
+    {
+        rtc.setUnix(dbUnix);
+        timeval tv = {(time_t)dbUnix, 0};
+        settimeofday(&tv, NULL);
+        Serial.println("RTC: Синхронизировано по разнице значений!");
+    }
 }
