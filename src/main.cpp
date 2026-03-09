@@ -10,6 +10,65 @@ GyverDBFile db(&LittleFS, "/data.db");
 SettingsGyver sett("Slobanya3 разделен!", &db);
 sets::Logger logger(200);
 
+#include <PubSubClient.h> // Не забудь установить!
+#include <ArduinoJson.h>  // Для удобной передачи пачкой
+
+WiFiClient espClient;
+PubSubClient mqtt(espClient);
+
+// --- Функция приема команд из Node-RED ---
+void mqttCallback(char *topic, byte *payload, unsigned int length)
+{
+    String msg;
+    for (int i = 0; i < length; i++)
+        msg += (char)payload[i];
+
+    String strTopic = String(topic);
+
+    if (strTopic == TOPIC_SET_SLIDER)
+        db[kk::slider] = msg.toFloat();
+    if (strTopic == TOPIC_SET_TOGGLE)
+        db[kk::toggle] = (msg == "1" || msg == "true");
+    if (strTopic == TOPIC_SET_SELECT)
+        db[kk::selectw] = msg.toInt();
+
+    db.update(); // Чтобы изменения сразу ушли в UI и на OLED
+}
+
+void sendMqttStatus()
+{
+    if (!mqtt.connected())
+        return;
+
+    // Собираем JSON, чтобы не слать 10 разных топиков
+    StaticJsonDocument<200> doc;
+    doc["temp1"] = db[kk::tmp1].toFloat();
+    doc["temp2"] = db[kk::tmp2].toFloat();
+    doc["slider"] = db[kk::slider].toFloat();
+    doc["toggle"] = db[kk::toggle].toBool();
+    doc["select"] = db[kk::selectw].toInt();
+    doc["uptime"] = millis() / 1000;
+
+    char buffer[200];
+    serializeJson(doc, buffer);
+    mqtt.publish(TOPIC_STATE, buffer);
+}
+
+void mqttReconnect()
+{
+    if (millis() % 5000 != 0)
+        return; // Пытаемся раз в 5 сек без блокировки loop
+    if (!mqtt.connected())
+    {
+        if (mqtt.connect("ESP_Main_Module"))
+        {
+            mqtt.subscribe(TOPIC_SET_SLIDER);
+            mqtt.subscribe(TOPIC_SET_TOGGLE);
+            mqtt.subscribe(TOPIC_SET_SELECT);
+        }
+    }
+}
+
 void initTime()
 {
     rtc.begin();
@@ -61,12 +120,32 @@ void setup()
     setStampZone(3); // Часовой пояс
     sett.onBuild(build);
     sett.onUpdate(update);
+    mqtt.setServer(MQTT_SERVER, MQTT_PORT);
+    mqtt.setCallback(mqttCallback);
 }
 void loop()
 {
     sett.tick();     // Обслуживание веб-интерфейса (ОБЯЗАТЕЛЬНО)
     db.tick();       // Обслуживание базы данных (сохранение на диск)
     handleSensors(); // Опрос датчиков (внутри функции свой таймер)
+
+    // MQTT логика
+    if (!mqtt.connected())
+    {
+        mqttReconnect();
+    }
+    else
+    {
+        mqtt.loop();
+
+        // Отправка данных по таймеру (например, каждые 2 секунды)
+        static uint32_t tmr_mqtt_send;
+        if (millis() - tmr_mqtt_send >= 2000)
+        {
+            tmr_mqtt_send = millis();
+            sendMqttStatus();
+        }
+    }
 
     // --- 2. Управление нагрузкой (ШИМ на D7) ---
     static uint32_t tmrControl;

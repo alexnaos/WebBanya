@@ -23,6 +23,17 @@
 #define WIFI_SSID "Sloboda100"
 #define WIFI_PASS "2716192023"
 
+#define MQTT_SERVER "192.168.1.23" // IP твоей апельсинки
+#define MQTT_PORT 1883
+// Топики для отправки С ЕСП
+#define TOPIC_STATE "esp/state"     // Тут будет JSON со всеми данными
+// Топики для управления (ПОДПИСКА)
+#define TOPIC_SET_SLIDER "esp/set/slider"
+#define TOPIC_SET_TOGGLE "esp/set/toggle"
+#define TOPIC_SET_SELECT "esp/set/select"
+
+
+
 // Переменные
 enum kk : size_t
 {
