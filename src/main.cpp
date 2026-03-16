@@ -1,4 +1,3 @@
-
 #include <Arduino.h>
 #include "config.h"
 #include "ui_portal.h"
@@ -9,10 +8,8 @@ GyverDS3231 rtc;
 GyverDBFile db(&LittleFS, "/data.db");
 SettingsGyver sett("Slobanya3 разделен!", &db);
 sets::Logger logger(200);
-
 #include <PubSubClient.h> // Не забудь установить!
 #include <ArduinoJson.h>  // Для удобной передачи пачкой
-
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
 
@@ -32,7 +29,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     if (strTopic == TOPIC_SET_SELECT)
         db[kk::selectw] = msg.toInt();
 
-    db.update(); // Чтобы изменения сразу ушли в UI и на OLED
+    //db.update(); // Чтобы изменения сразу ушли в UI и на OLED
 }
 
 void sendMqttStatus()
@@ -48,7 +45,6 @@ void sendMqttStatus()
     doc["toggle"] = db[kk::toggle].toBool();
     doc["select"] = db[kk::selectw].toInt();
     doc["uptime"] = millis() / 1000;
-
     char buffer[200];
     serializeJson(doc, buffer);
     mqtt.publish(TOPIC_STATE, buffer);
@@ -87,7 +83,7 @@ void setup()
     // 1. Конфигурация пинов
     pinMode(D7, OUTPUT);
     analogWriteRange(1023);
-    analogWriteFreq(20000);
+    analogWriteFreq(10000);
     analogWrite(D7, 0);
     Serial.println("LED is ON");
     LittleFS.begin();
@@ -113,7 +109,7 @@ void setup()
     WiFi.mode(WIFI_AP_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
     // ... цикл подключения ...
-    WiFi.softAP("AP ESP");
+    //WiFi.softAP("AP ESP");
     // 5. Интерфейс (ПОСЛЕ БД)
     sett.begin();
     sett.config.theme = sets::Colors::Green;
