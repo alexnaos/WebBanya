@@ -1,6 +1,12 @@
 #include <Arduino.h>
 #include "config.h"
 #include "ui_portal.h"
+#include <ESP8266WiFi.h>
+#include <ESP8266WiFiMulti.h>
+
+ESP8266WiFiMulti wifiMulti;
+
+
 // Создание объектов
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
@@ -105,11 +111,26 @@ void setup()
     Wire.begin();
     initTime(); // Теперь setup выглядит аккуратно
     initSensors();
-    // 4. Сеть
-    WiFi.mode(WIFI_AP_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
-    // ... цикл подключения ...
-    //WiFi.softAP("AP ESP");
+
+  // 1. Устанавливаем режим
+WiFi.mode(WIFI_STA);
+
+// 2. Регистрируем все доступные точки доступа
+wifiMulti.addAP(WIFI_SSID_1, WIFI_PASS_1);
+wifiMulti.addAP(WIFI_SSID_2, WIFI_PASS_2);
+
+Serial.println("WiFi: Connecting...");
+
+// 3. Ждем первого подключения (необязательно, но полезно для MQTT/Времени)
+// run() вернет WL_CONNECTED, когда выберет лучшую сеть
+while (wifiMulti.run() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+}
+
+Serial.println("\nWiFi Connected to: " + WiFi.SSID());
+
+
     // 5. Интерфейс (ПОСЛЕ БД)
     sett.begin();
     sett.config.theme = sets::Colors::Green;
@@ -119,41 +140,43 @@ void setup()
     mqtt.setServer(MQTT_SERVER, MQTT_PORT);
     mqtt.setCallback(mqttCallback);
 }
-void loop()
-{
-    sett.tick();     // Обслуживание веб-интерфейса (ОБЯЗАТЕЛЬНО)
-    db.tick();       // Обслуживание базы данных (сохранение на диск)
-    handleSensors(); // Опрос датчиков (внутри функции свой таймер)
 
-    // MQTT логика
-    if (!mqtt.connected())
-    {
-        mqttReconnect();
-    }
-    else
-    {
-        mqtt.loop();
+void loop() {
+    // 1. Поддержка Wi-Fi (автоматическое переключение на лучший сигнал)
+    // run() вызывается постоянно, он сам решит, нужно ли переподключаться
+    wifiMulti.run(); 
 
-        // Отправка данных по таймеру (например, каждые 2 секунды)
-        static uint32_t tmr_mqtt_send;
-        if (millis() - tmr_mqtt_send >= 2000)
-        {
-            tmr_mqtt_send = millis();
-            sendMqttStatus();
+    // 2. Системные задачи (должны работать ВСЕГДА)
+    sett.tick();     // Обслуживание веб-интерфейса
+    db.tick();       // Сохранение настроек в базу
+    handleSensors(); // Опрос датчиков
+
+    // 3. MQTT логика (только если есть Wi-Fi)
+    if (WiFi.status() == WL_CONNECTED) {
+        if (!mqtt.connected()) {
+            mqttReconnect();
+        } else {
+            mqtt.loop();
+            // Отправка данных каждые 2 секунды
+            static uint32_t tmr_mqtt_send;
+            if (millis() - tmr_mqtt_send >= 2000) {
+                tmr_mqtt_send = millis();
+                sendMqttStatus();
+            }
         }
     }
 
-    // --- 2. Управление нагрузкой (ШИМ на D7) ---
+    // 4. Управление нагрузкой (ШИМ на D7) — работает автономно
     static uint32_t tmrControl;
-    if (millis() - tmrControl >= 100)
-    {
+    if (millis() - tmrControl >= 100) {
         tmrControl = millis();
         static int lastVal = -1;
-        // Если toggle == true, берем значение слайдера, иначе 0
+        
+        // Берем значения из базы данных GyverDB
         int currentVal = db[kk::toggle].toBool() ? db[kk::slider].toInt() : 0;
         currentVal = constrain(currentVal, 0, 1023);
-        if (currentVal != lastVal)
-        {
+        
+        if (currentVal != lastVal) {
             analogWrite(D7, currentVal);
             lastVal = currentVal;
         }

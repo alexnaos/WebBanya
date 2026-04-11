@@ -20,8 +20,12 @@
 #define LED_PIN D7
 #define TEMP_UPDATE_INTERVAL 1000
 // --- Сеть ---
-#define WIFI_SSID "Sloboda100"
-#define WIFI_PASS "2716192023"
+#define WIFI_SSID_1 "Ban2"
+#define WIFI_PASS_1 "2716192023"
+#define WIFI_SSID_2 "Sloboda100"
+#define WIFI_PASS_2 "2716192023"
+
+// Если сетей будет больше, можно добавить 3, 4 и т.д.
 
 #define MQTT_SERVER "192.168.1.23" // IP твоей апельсинки
 #define MQTT_PORT 1883
@@ -31,8 +35,6 @@
 #define TOPIC_SET_SLIDER "esp/set/slider"
 #define TOPIC_SET_TOGGLE "esp/set/toggle"
 #define TOPIC_SET_SELECT "esp/set/select"
-
-
 
 // Переменные
 enum kk : size_t
