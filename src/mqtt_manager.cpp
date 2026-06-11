@@ -5,6 +5,8 @@ PubSubClient mqtt(espClient);
 
 static uint32_t tmrMqttSend;
 static uint32_t tmrMqttReconnect;
+static const char* selectOptions[] = {"var1", "var2", "hello"};
+static const int selectOptionCount = 3;
 
 // --- Callback приёма команд из MQTT ---
 void mqttCallback(char *topic, byte *payload, unsigned int length)
@@ -17,16 +19,45 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
 
     if (strTopic == MQTT_TOPIC_SET_SLIDER)
         db[kk::slider] = msg.toFloat();
+
     if (strTopic == MQTT_TOPIC_SET_TOGGLE)
-        db[kk::toggle] = (msg == "1" || msg == "true" || msg == "ON");
+    {
+        db[kk::toggle] = (msg == "ON" || msg == "1" || msg == "true");
+        Serial.print("Toggle set to: ");
+        Serial.println(db[kk::toggle].toBool() ? "ON" : "OFF");
+    }
+
     if (strTopic == MQTT_TOPIC_SET_SELECT)
-        db[kk::selectw] = msg.toInt();
+    {
+        // HA может прислать как число (индекс), так и строку
+        int idx = msg.toInt();
+        if (idx >= 0 && idx < selectOptionCount)
+        {
+            db[kk::selectw] = idx;
+        }
+        else
+        {
+            // Поиск по имени опции
+            for (int i = 0; i < selectOptionCount; i++)
+            {
+                if (msg == selectOptions[i])
+                {
+                    db[kk::selectw] = i;
+                    break;
+                }
+            }
+        }
+        Serial.print("Select set to: ");
+        Serial.println(db[kk::selectw].toInt());
+    }
 }
 
 // --- HA Discovery: публикуем конфигурацию для Home Assistant ---
-static void publishDiscoverySensor(const char *sensorId, const char *name, const char *valTpl, const char *unit, const char *devClass)
+static void publishDiscoverySensor(const char *sensorId, const char *name,
+    const char *valTpl, const char *unit, const char *devClass)
 {
-    String topic = String(HA_DISCOVERY_PREFIX) + "/sensor/" + HA_DEVICE_ID + "_" + sensorId + "/config";
+    String topic = String(HA_DISCOVERY_PREFIX) + "/sensor/"
+        + HA_DEVICE_ID + "_" + sensorId + "/config";
     JsonDocument doc;
     doc["name"] = name;
     doc["uniq_id"] = String(HA_DEVICE_ID) + "_" + sensorId;
@@ -52,60 +83,70 @@ void sendMQTTDiscovery()
     publishDiscoverySensor("temp2", "Температура улица",
         "{{ value_json.temp2 }}", "°C", "temperature");
 
-    // Реле (switch)
+    // Реле (switch) — используем строковые ON/OFF
     {
-        String topic = String(HA_DISCOVERY_PREFIX) + "/switch/" + HA_DEVICE_ID + "_relay/config";
+        String topic = String(HA_DISCOVERY_PREFIX) + "/switch/"
+            + HA_DEVICE_ID + "_relay/config";
         JsonDocument doc;
         doc["name"] = "Реле";
         doc["uniq_id"] = String(HA_DEVICE_ID) + "_relay";
         doc["stat_t"] = MQTT_TOPIC_STATE;
         doc["cmd_t"] = MQTT_TOPIC_SET_TOGGLE;
         doc["val_tpl"] = "{{ value_json.toggle }}";
-        doc["payload_on"] = "1";
-        doc["payload_off"] = "0";
-        doc["state_on"] = true;
-        doc["state_off"] = false;
+        doc["payload_on"] = "ON";
+        doc["payload_off"] = "OFF";
+        doc["state_on"] = "ON";
+        doc["state_off"] = "OFF";
         doc["dev"]["ids"] = HA_DEVICE_ID;
+        doc["qos"] = 1;
+        doc["retain"] = false;
         String output;
         serializeJson(doc, output);
         mqtt.publish(topic.c_str(), output.c_str(), true);
+        Serial.println("HA Discovery: relay");
     }
 
-    // Мощность (number)
+    // Мощность (number) — добавим mode: slider
     {
-        String topic = String(HA_DISCOVERY_PREFIX) + "/number/" + HA_DEVICE_ID + "_power/config";
+        String topic = String(HA_DISCOVERY_PREFIX) + "/number/"
+            + HA_DEVICE_ID + "_power/config";
         JsonDocument doc;
         doc["name"] = "Мощность";
         doc["uniq_id"] = String(HA_DEVICE_ID) + "_power";
         doc["stat_t"] = MQTT_TOPIC_STATE;
         doc["cmd_t"] = MQTT_TOPIC_SET_SLIDER;
-        doc["val_tpl"] = "{{ value_json.slider }}";
+        doc["val_tpl"] = "{{ value_json.slider | int }}";
         doc["min"] = 0;
         doc["max"] = 1023;
         doc["step"] = 1;
-        doc["unit_of_meas"] = "PWM";
+        doc["mode"] = "slider";
+        doc["unit_of_meas"] = "";
         doc["dev"]["ids"] = HA_DEVICE_ID;
+        doc["qos"] = 1;
         String output;
         serializeJson(doc, output);
         mqtt.publish(topic.c_str(), output.c_str(), true);
+        Serial.println("HA Discovery: power slider");
     }
 
     // Режим (select)
     {
-        String topic = String(HA_DISCOVERY_PREFIX) + "/select/" + HA_DEVICE_ID + "_mode/config";
+        String topic = String(HA_DISCOVERY_PREFIX) + "/select/"
+            + HA_DEVICE_ID + "_mode/config";
         JsonDocument doc;
         doc["name"] = "Режим";
         doc["uniq_id"] = String(HA_DEVICE_ID) + "_mode";
         doc["stat_t"] = MQTT_TOPIC_STATE;
         doc["cmd_t"] = MQTT_TOPIC_SET_SELECT;
-        doc["val_tpl"] = "{{ value_json.select }}";
-        doc["options"][0] = "var1";
-        doc["options"][1] = "var2";
-        doc["options"][2] = "hello";
+        doc["val_tpl"] = "{{ value_json.select_mode }}";
+        for (int i = 0; i < selectOptionCount; i++)
+            doc["options"][i] = selectOptions[i];
         doc["dev"]["ids"] = HA_DEVICE_ID;
+        doc["qos"] = 1;
         String output;
         serializeJson(doc, output);
         mqtt.publish(topic.c_str(), output.c_str(), true);
+        Serial.println("HA Discovery: mode select");
     }
 
     Serial.println("HA Discovery sent");
@@ -117,11 +158,21 @@ void sendMQTTStatus()
     if (!mqtt.connected()) return;
 
     JsonDocument doc;
-    doc["temp1"] = db[kk::tmp1].toFloat();
-    doc["temp2"] = db[kk::tmp2].toFloat();
-    doc["slider"] = db[kk::slider].toFloat();
-    doc["toggle"] = db[kk::toggle].toBool();
-    doc["select"] = db[kk::selectw].toInt();
+    doc["temp1"] = serialized(String(db[kk::tmp1].toFloat(), 1));
+    doc["temp2"] = serialized(String(db[kk::tmp2].toFloat(), 1));
+    doc["slider"] = db[kk::slider].toInt();
+
+    // Switch: ON/OFF строкой, а не true/false
+    doc["toggle"] = db[kk::toggle].toBool() ? "ON" : "OFF";
+
+    // Select: слать имя опции, а не индекс
+    int selIdx = db[kk::selectw].toInt();
+    if (selIdx >= 0 && selIdx < selectOptionCount)
+        doc["select_mode"] = selectOptions[selIdx];
+    else
+        doc["select_mode"] = "unknown";
+
+    doc["select"] = selIdx; // оставим для обратной совместимости
     doc["uptime"] = millis() / 1000;
 
     char buffer[256];
