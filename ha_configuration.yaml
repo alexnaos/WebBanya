@@ -1,0 +1,74 @@
+# ========================================
+# WebBanya3 — MQTT интеграция для HA
+# Добавьте этот блок в configuration.yaml
+# и перезапустите Home Assistant
+# ========================================
+
+mqtt:
+  sensor:
+    - name: "Температура дом"
+      unique_id: webbanya3_temp1
+      state_topic: "esp/state"
+      value_template: "{{ value_json.temp1 }}"
+      unit_of_measurement: "°C"
+      device_class: temperature
+      qos: 1
+      device:
+        identifiers: webbanya3_esp
+        name: "WebBanya3"
+        manufacturer: "ESP8266"
+        model: "Wemos D1 Mini"
+        sw_version: "1.0"
+
+    - name: "Температура улица"
+      unique_id: webbanya3_temp2
+      state_topic: "esp/state"
+      value_template: "{{ value_json.temp2 }}"
+      unit_of_measurement: "°C"
+      device_class: temperature
+      qos: 1
+      device:
+        identifiers: webbanya3_esp
+
+  switch:
+    - name: "Реле"
+      unique_id: webbanya3_relay
+      state_topic: "esp/state"
+      value_template: "{{ value_json.toggle }}"
+      command_topic: "esp/set/toggle"
+      payload_on: "ON"
+      payload_off: "OFF"
+      state_on: "ON"
+      state_off: "OFF"
+      qos: 1
+      retain: false
+      device:
+        identifiers: webbanya3_esp
+
+  number:
+    - name: "Мощность"
+      unique_id: webbanya3_power
+      state_topic: "esp/state"
+      value_template: "{{ value_json.slider | int }}"
+      command_topic: "esp/set/slider"
+      min: 0
+      max: 1023
+      step: 1
+      mode: slider
+      qos: 1
+      device:
+        identifiers: webbanya3_esp
+
+  select:
+    - name: "Режим"
+      unique_id: webbanya3_mode
+      state_topic: "esp/state"
+      value_template: "{{ value_json.select_mode }}"
+      command_topic: "esp/set/select"
+      options:
+        - "var1"
+        - "var2"
+        - "hello"
+      qos: 1
+      device:
+        identifiers: webbanya3_esp

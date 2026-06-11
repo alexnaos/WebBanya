@@ -1,0 +1,132 @@
+homeassistant:
+  name: "Home"
+  packages: !include_dir_named packages
+
+default_config:
+
+frontend:
+  themes: !include_dir_merge_named themes
+
+# 2. Подключение файлов
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+# 3. MQTT Компоненты (Сенсоры + WebBanya3)
+mqtt:
+  sensor:
+    - name: "YM Текущий трек"
+      unique_id: ym_track
+      state_topic: "ym/track"
+    - name: "YM Плейлист"
+      unique_id: ym_playlist
+      state_topic: "ym/playlist"
+    - name: "YM Артист"
+      unique_id: ym_artist
+      state_topic: "ym/player/artist"
+    - name: "YM Статус Плеера"
+      unique_id: ym_status
+      state_topic: "ym/player/state"
+    - name: "YM Ссылка Обложки"
+      unique_id: ym_cover_link_sensor
+      state_topic: "ym/player/cover_url"
+
+    # ===== WebBanya3 — Датчики температуры =====
+    - name: "Температура дом"
+      unique_id: webbanya3_temp1
+      state_topic: "esp/state"
+      value_template: "{{ value_json.temp1 }}"
+      unit_of_measurement: "°C"
+      device_class: temperature
+      qos: 1
+      device:
+        identifiers: webbanya3_esp
+        name: "WebBanya3"
+        manufacturer: "ESP8266"
+        model: "Wemos D1 Mini"
+        sw_version: "1.0"
+    - name: "Температура улица"
+      unique_id: webbanya3_temp2
+      state_topic: "esp/state"
+      value_template: "{{ value_json.temp2 }}"
+      unit_of_measurement: "°C"
+      device_class: temperature
+      qos: 1
+      device:
+        identifiers: webbanya3_esp
+
+  # ===== WebBanya3 — Управление =====
+  switch:
+    - name: "Реле"
+      unique_id: webbanya3_relay
+      state_topic: "esp/state"
+      value_template: "{{ value_json.toggle }}"
+      command_topic: "esp/set/toggle"
+      payload_on: "ON"
+      payload_off: "OFF"
+      state_on: "ON"
+      state_off: "OFF"
+      qos: 1
+      retain: false
+      device:
+        identifiers: webbanya3_esp
+        name: "WebBanya3"
+        manufacturer: "ESP8266"
+        model: "Wemos D1 Mini"
+        sw_version: "1.0"
+
+  number:
+    - name: "Мощность"
+      unique_id: webbanya3_power
+      state_topic: "esp/state"
+      value_template: "{{ value_json.slider | int }}"
+      command_topic: "esp/set/slider"
+      min: 0
+      max: 1023
+      step: 1
+      mode: slider
+      qos: 1
+      device:
+        identifiers: webbanya3_esp
+
+  select:
+    - name: "Режим"
+      unique_id: webbanya3_mode
+      state_topic: "esp/state"
+      value_template: "{{ value_json.select_mode }}"
+      command_topic: "esp/set/select"
+      options:
+        - "var1"
+        - "var2"
+        - "hello"
+      qos: 1
+      device:
+        identifiers: webbanya3_esp
+
+# 4. Основной плеер + Полноценный плеер Яндекс Музыки через ёRadio
+media_player:
+  # Ваш первый плеер для ESP (НЕ ТРОГАЕМ)
+  - platform: yoradio
+    name: "SlobodaRadio Backend"
+    root_topic: "yoradio/homeradio"
+
+  # Второй базовый плеер для Orange Pi (служит бэкендом для управления)
+  - platform: yoradio
+    name: "Yandex Music Orange"
+    root_topic: "yoradio/orange"
+    command_topic: "ym/player/cmd"
+    play_command: "PLAY"
+    stop_command: "PAUSE"
+    next_command: "NEXT"
+    prev_command: "PREV"
+
+# 6. База данных
+recorder:
+  purge_keep_days: 2
+  commit_interval: 30
+  
+# 7. Доверенный прокси Keenetic
+http:
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 192.168.1.1  # IP-адрес вашего роутера Keenetic

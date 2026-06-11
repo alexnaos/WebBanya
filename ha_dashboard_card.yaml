@@ -1,0 +1,50 @@
+# ========================================
+# WebBanya3 — Карточка для дашборда HA
+# ========================================
+# Как добавить:
+# 1. HA → Обзор → ⋮ (три точки) → Редактировать панель
+# 2. + Добавить карточку → вкладка "Редактор кода"
+# 3. Вставь этот YAML → Сохранить
+# ========================================
+
+type: vertical-stack
+title: "WebBanya3 — Управление баней"
+cards:
+  # --- Температуры ---
+  - type: entities
+    title: "🌡️ Температура"
+    state_color: true
+    entities:
+      - entity: sensor.webbanya3_temp1
+        name: "Дом"
+      - entity: sensor.webbanya3_temp2
+        name: "Улица"
+
+  # --- Управление ---
+  - type: entities
+    title: "⚙️ Управление"
+    state_color: true
+    entities:
+      - entity: switch.webbanya3_relay
+        name: "Реле"
+      - entity: number.webbanya3_power
+        name: "Мощность"
+      - entity: select.webbanya3_mode
+        name: "Режим"
+
+  # --- Состояние устройства ---
+  - type: entity
+    entity: sensor.webbanya3_temp1
+    name: "Текущая температура"
+    icon: "mdi:thermometer"
+
+  # --- Индикация статуса ---
+  - type: glance
+    title: "📡 Статус"
+    entities:
+      - entity: switch.webbanya3_relay
+        name: "Реле"
+      - entity: sensor.webbanya3_temp1
+        name: "Дом"
+      - entity: sensor.webbanya3_temp2
+        name: "Улица"
