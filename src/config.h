@@ -1,5 +1,6 @@
 #ifndef CONFIG_H
 #define CONFIG_H
+
 #include <Arduino.h>
 #include <GyverDBFile.h>
 #include <LittleFS.h>
@@ -10,46 +11,57 @@
 #include <ArduinoJson.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <PubSubClient.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266WiFiMulti.h>
+
 // --- Настройки дисплея ---
-#define DISPLAY_VCC_PIN D6
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-#define OLED_RESET -1
+#define OLED_RESET    -1
+#define OLED_ADDR     0x3C
+
 // --- Настройки датчиков и периферии ---
-#define ONE_WIRE_BUS D5
-#define LED_PIN D7
-#define TEMP_UPDATE_INTERVAL 1000
+#define ONE_WIRE_BUS       D5
+#define LED_PIN            D7
+#define TEMP_UPDATE_MS     1000
+#define OLED_UPDATE_MS     500
+#define PWM_FREQ           10000
+#define PWM_MAX            1023
+
 // --- Сеть ---
 #define WIFI_SSID_1 "Ban2"
 #define WIFI_PASS_1 "2716192023"
 #define WIFI_SSID_2 "Sloboda100"
 #define WIFI_PASS_2 "2716192023"
+#define WIFI_TIMEOUT_MS    15000
 
-// Если сетей будет больше, можно добавить 3, 4 и т.д.
+// --- MQTT ---
+#define MQTT_SERVER "192.168.1.23"
+#define MQTT_PORT   1883
+#define MQTT_TOPIC_STATE   "esp/state"
+#define MQTT_TOPIC_SET_SLIDER "esp/set/slider"
+#define MQTT_TOPIC_SET_TOGGLE "esp/set/toggle"
+#define MQTT_TOPIC_SET_SELECT "esp/set/select"
+#define MQTT_SEND_MS       2000
+#define MQTT_CLIENT_NAME   "ESP_Banya"
 
-#define MQTT_SERVER "192.168.1.23" // IP твоей апельсинки
-#define MQTT_PORT 1883
-// Топики для отправки С ЕСП
-#define TOPIC_STATE "esp/state"     // Тут будет JSON со всеми данными
-// Топики для управления (ПОДПИСКА)
-#define TOPIC_SET_SLIDER "esp/set/slider"
-#define TOPIC_SET_TOGGLE "esp/set/toggle"
-#define TOPIC_SET_SELECT "esp/set/select"
+// --- Home Assistant Discovery ---
+#define HA_DISCOVERY_PREFIX "homeassistant"
+#define HA_DEVICE_NAME      "WebBanya3"
+#define HA_DEVICE_ID        "webbanya3_esp"
 
-// Переменные
-enum kk : size_t
-{
+// --- Часовой пояс ---
+#define TIMEZONE 3
+
+// Ключи базы данных
+enum kk : size_t {
     txt,
-    pass,
-    uintw,
-    intw,
-    int64w,
-    color,
     toggle,
     slider,
     selectw,
-    sldmin,
-    sldmax,
+    tmp1,
+    tmp2,
     lbl1,
     lbl2,
     date,
@@ -57,31 +69,37 @@ enum kk : size_t
     datime,
     btn1,
     btn2,
-    tmp1,
-    tmp2,
-    logic,
 };
 
-const DeviceAddress addr1 = {0x28, 0xB2, 0x54, 0x7F, 0x00, 0x00, 0x00, 0xCF};
-const DeviceAddress addr2 = {0x28, 0x39, 0xE2, 0x6E, 0x01, 0x00, 0x00, 0x12};
-// Глобальные переменные состояния
-uint32_t tmr;
+// Адреса датчиков DS18B20
+extern const DeviceAddress addr1;
+extern const DeviceAddress addr2;
 
-// ОБЪЯВЛЕНИЯ ОБЪЕКТОВ (через extern)
-// Это говорит компилятору: "Объект существует, но создан он в другом месте"
+// Глобальные объекты
 extern GyverDBFile db;
 extern SettingsGyver sett;
 extern sets::Logger logger;
-extern Adafruit_SSD1306 display; // Объявляем, что дисплей общий
+extern Adafruit_SSD1306 display;
 extern GyverDS3231 rtc;
-extern float temp1;
-extern float temp2;
+extern ESP8266WiFiMulti wifiMulti;
+extern WiFiClient espClient;
+extern PubSubClient mqtt;
 
-void initTime();
+// Объявления функций
+void initWiFi();
+void initRTC();
 void initSensors();
-void updateOLED();
+void initMQTT();
+void initOTA();
+void handleMQTT();
 void handleSensors();
-void setup();
-void loop();
+void handleControl();
+void handleOTA();
+void initDisplay();
+void updateOLED();
+void syncRTCFromDB();
+void build(sets::Builder &b);
+void update(sets::Updater &upd);
+void sendMQTTDiscovery();
 
 #endif

@@ -1,21 +1,18 @@
 #include "ui_portal.h"
 
-// Описываем интерфейс
-
 void build(sets::Builder &b)
 {
     if (b.build.isAction())
     {
         logger.print("Set: 0x");
         logger.println(b.build.id, HEX);
-        b.DateTime("rtc"); // Дата и время в одном флаконе
+        b.DateTime("rtc");
     }
     b.Label("Текущее время RTC: " + sett.rtc.toString());
 
-    if (b.beginGroup("Group 1")) // Группа 1
+    if (b.beginGroup("Group 1"))
     {
         b.Input(kk::txt, "Text");
-        // b.Pass(kk::pass, "Password");
         b.Label(kk::tmp1, "Дом");
         b.Label(kk::tmp2, "Улица");
         b.endGroup();
@@ -36,15 +33,14 @@ void build(sets::Builder &b)
         }
         b.endRow();
     }
-    if (b.beginGroup("Group3")) // Группа с датами и временем
+    if (b.beginGroup("Group3"))
     {
         b.Date(kk::date, "Date");
         b.Time(kk::timew, "Time");
         b.DateTime(kk::datime, "Datime");
-        b.endGroup(); // Закрываем Group3
+        b.endGroup();
     }
-    // --- Блок системных кнопок ---
-    if (b.beginGroup("Система управления")) // Переименовано для уникальности ID
+    if (b.beginGroup("Система управления"))
     {
         if (b.beginButtons())
         {
@@ -56,12 +52,11 @@ void build(sets::Builder &b)
             if (b.Button(kk::btn2, "clear db", sets::Colors::Blue))
             {
                 Serial.println("clear db");
-                // db.clear();
                 db.update();
             }
             b.endButtons();
         }
-        b.endGroup(); // Закрываем Систему управления
+        b.endGroup();
     }
 }
 
@@ -69,28 +64,14 @@ void update(sets::Updater &upd)
 {
     upd.update(kk::lbl1, random(100));
     upd.update(kk::lbl2, millis());
-    // upd.update(kk::tmp1, temp1);
-    // upd.update(kk::tmp2, temp2);
     upd.update(kk::tmp1, db[kk::tmp1].toFloat(), 2);
     upd.update(kk::tmp2, db[kk::tmp2].toFloat(), 2);
 
-    // 2. Медленная синхронизация (раз в 1 минуту)
+    // Синхронизация RTC с БД раз в минуту
     static uint32_t syncTmr = 0;
     if (millis() - syncTmr >= 60000)
     {
         syncTmr = millis();
-
-        uint32_t dbUnix = db[kk::date].toInt32();
-        uint32_t sysUnix = (uint32_t)time(NULL);
-        // Если в базе время новее или сильно отличается (например, после ручной настройки в UI)
-        if (abs((long)dbUnix - (long)sysUnix) > 5)
-        {
-            rtc.setUnix(dbUnix);
-
-            timeval tv = {(time_t)dbUnix, 0};
-            settimeofday(&tv, NULL);
-
-            Serial.println("RTC: Плановая синхронизация выполнена!");
-        }
+        syncRTCFromDB();
     }
 }
