@@ -14,6 +14,7 @@
 #include <PubSubClient.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WiFiMulti.h>
+#include <ESP8266mDNS.h>
 
 // --- Настройки дисплея ---
 #define SCREEN_WIDTH 128
@@ -50,6 +51,7 @@
 #define HA_DISCOVERY_PREFIX "homeassistant"
 #define HA_DEVICE_NAME      "WebBanya3"
 #define HA_DEVICE_ID        "webbanya3_esp"
+#define MDNS_NAME           "webbanya3"
 
 // --- Часовой пояс ---
 #define TIMEZONE 3

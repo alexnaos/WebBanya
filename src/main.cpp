@@ -40,9 +40,15 @@ void setup()
     // OTA (после WiFi)
     initOTA();
 
+    // Регистрация кастомного CSS (если файл есть на LittleFS)
+    if (LittleFS.exists("/custom.js")) {
+        sett.setCustomFile("/custom.js");
+        Serial.println("Custom theme loaded from /custom.js");
+    }
+
     // Веб-интерфейс (после БД)
+    sett.config.theme = sets::Colors::Default;
     sett.begin();
-    sett.config.theme = sets::Colors::Green;
     sett.onBuild(build);
     sett.onUpdate(update);
 
