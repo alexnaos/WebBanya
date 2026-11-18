@@ -13,8 +13,32 @@ void build(sets::Builder &b)
     if (b.beginGroup("Group 1"))
     {
         b.Input(kk::txt, "Text");
-        b.Label(kk::tmp1, "Дом");
-        b.Label(kk::tmp2, "Улица");
+        b.endGroup();
+    }
+    if (b.beginGroup("Температура"))
+    {
+        if (sensorCount == 0)
+        {
+            b.Label("", "Датчики не найдены");
+        }
+        else
+        {
+            // Автоматически определяем и выводим все найденные датчики
+            for (uint8_t i = 0; i < sensorCount; i++)
+            {
+                String name = "Датчик " + String(i + 1);
+                b.Label(kk::sensorKeyBase + i, name);
+            }
+        }
+        if (b.beginRow())
+        {
+            if (b.Button("Сканировать"))
+            {
+                scanSensors();
+                b.reload();
+            }
+            b.endRow();
+        }
         b.endGroup();
     }
     b.Switch(kk::toggle, "Реле");
@@ -64,8 +88,15 @@ void update(sets::Updater &upd)
 {
     upd.update(kk::lbl1, random(100));
     upd.update(kk::lbl2, millis());
-    upd.update(kk::tmp1, db[kk::tmp1].toFloat(), 2);
-    upd.update(kk::tmp2, db[kk::tmp2].toFloat(), 2);
+
+    // Обновление значений всех найденных датчиков
+    for (uint8_t i = 0; i < sensorCount; i++)
+    {
+        if (sensorTemps[i] != DEVICE_DISCONNECTED_C)
+            upd.update(kk::sensorKeyBase + i, sensorTemps[i], 1);
+        else
+            upd.update(kk::sensorKeyBase + i, "-");
+    }
 
     // Синхронизация RTC с БД раз в минуту
     static uint32_t syncTmr = 0;

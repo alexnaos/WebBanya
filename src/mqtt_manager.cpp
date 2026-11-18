@@ -78,10 +78,16 @@ void sendMQTTDiscovery()
 {
     if (!mqtt.connected()) return;
 
-    publishDiscoverySensor("temp1", "Температура дом",
-        "{{ value_json.temp1 }}", "°C", "temperature");
-    publishDiscoverySensor("temp2", "Температура улица",
-        "{{ value_json.temp2 }}", "°C", "temperature");
+    // Автоопределённые датчики температуры: temp1, temp2, ... tempN
+    for (uint8_t i = 0; i < sensorCount; i++)
+    {
+        String sensorId = "temp" + String(i + 1);
+        String valTpl = "{{ value_json.temp" + String(i + 1) + " }}";
+        String name = "Температура датчик " + String(i + 1);
+
+        publishDiscoverySensor(sensorId.c_str(), name.c_str(),
+            valTpl.c_str(), "°C", "temperature");
+    }
 
     // Реле (switch) — используем строковые ON/OFF
     {
@@ -158,8 +164,17 @@ void sendMQTTStatus()
     if (!mqtt.connected()) return;
 
     JsonDocument doc;
-    doc["temp1"] = serialized(String(db[kk::tmp1].toFloat(), 1));
-    doc["temp2"] = serialized(String(db[kk::tmp2].toFloat(), 1));
+
+    // Температуры всех найденных датчиков: temp1, temp2, ... tempN
+    for (uint8_t i = 0; i < sensorCount; i++)
+    {
+        String key = "temp" + String(i + 1);
+        if (sensorTemps[i] != DEVICE_DISCONNECTED_C)
+            doc[key.c_str()] = serialized(String(sensorTemps[i], 1));
+        else
+            doc[key.c_str()] = "NaN";
+    }
+    doc["SensorCount"] = sensorCount;
     doc["slider"] = db[kk::slider].toInt();
 
     // Switch: ON/OFF строкой, а не true/false
@@ -175,7 +190,7 @@ void sendMQTTStatus()
     doc["select"] = selIdx; // оставим для обратной совместимости
     doc["uptime"] = millis() / 1000;
 
-    char buffer[256];
+    char buffer[512];
     serializeJson(doc, buffer);
     mqtt.publish(MQTT_TOPIC_STATE, buffer);
 }

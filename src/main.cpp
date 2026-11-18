@@ -23,6 +23,10 @@ void setup()
     db.init(kk::toggle, true);
     db.init(kk::slider, -3.5);
 
+    // Ключи БД для всех возможных датчиков (для авто-обновления в вебморде)
+    for (size_t i = 0; i < MAX_SENSORS; i++)
+        db.init(kk::sensorKeyBase + i, 0.0f);
+
     setStampZone(TIMEZONE);
 
     // Инициализация периферии

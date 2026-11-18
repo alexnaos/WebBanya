@@ -50,22 +50,28 @@ void updateOLED()
     display.print("R:");
     display.print(db[kk::slider].toFloat(), 1);
 
-    // --- ТЕМПЕРАТУРА ---
+    // --- ТЕМПЕРАТУРА (первые два найденных датчика) ---
     display.setCursor(0, 49);
-    float t1 = db[kk::tmp1].toFloat();
-    float t2 = db[kk::tmp2].toFloat();
 
-    auto printTemp = [](float t)
+    auto printTemp = [](uint8_t idx)
     {
-        if (t <= -50 || t >= 125 || t == 0)
-            display.print("--");
+        if (idx < sensorCount)
+        {
+            float t = sensorTemps[idx];
+            if (t == DEVICE_DISCONNECTED_C)
+                display.print("--");
+            else
+                display.print(t, 1);
+        }
         else
-            display.print(t, 1);
+        {
+            display.print("--");
+        }
     };
 
-    printTemp(t1);
+    printTemp(0);
     display.print(" ");
-    printTemp(t2);
+    printTemp(1);
 
     display.display();
 }

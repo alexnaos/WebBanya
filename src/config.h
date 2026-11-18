@@ -30,6 +30,10 @@
 #define PWM_FREQ           10000
 #define PWM_MAX            1023
 
+// Максимальное количество автоматически определяемых датчиков DS18B20
+#define MAX_SENSORS        8
+#define TEMP_RESCAN_MS     30000   // периодический поиск датчиков
+
 // --- Сеть ---
 #define WIFI_SSID_1 "Ban2"
 #define WIFI_PASS_1 "2716192023"
@@ -71,11 +75,15 @@ enum kk : size_t {
     datime,
     btn1,
     btn2,
+    sensorKeyBase = 100,   // базовый ключ для датчиков (sensorKeyBase + i)
 };
 
-// Адреса датчиков DS18B20
-extern const DeviceAddress addr1;
-extern const DeviceAddress addr2;
+// Автоопределение датчиков DS18B20
+// Адреса и температуры найденных на шине OneWire датчиков
+extern DeviceAddress sensorAddrs[MAX_SENSORS];
+extern float         sensorTemps[MAX_SENSORS];
+extern uint8_t       sensorCount;
+void scanSensors();
 
 // Глобальные объекты
 extern GyverDBFile db;
