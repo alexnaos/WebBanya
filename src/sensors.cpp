@@ -58,7 +58,9 @@ void scanSensors()
     if (sensorCount != lastCount)
     {
         lastCount = sensorCount;
+#if ENABLE_HA_DISCOVERY
         sendMQTTDiscovery();
+#endif
     }
 }
 

@@ -52,6 +52,7 @@
 #define MQTT_CLIENT_NAME   "ESP_Banya"
 
 // --- Home Assistant Discovery ---
+#define ENABLE_HA_DISCOVERY 0
 #define HA_DISCOVERY_PREFIX "homeassistant"
 #define HA_DEVICE_NAME      "WebBanya3"
 #define HA_DEVICE_ID        "webbanya3_esp"

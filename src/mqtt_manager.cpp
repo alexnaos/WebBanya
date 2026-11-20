@@ -53,6 +53,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
 }
 
 // --- HA Discovery: публикуем конфигурацию для Home Assistant ---
+#if ENABLE_HA_DISCOVERY
 static void publishDiscoverySensor(const char *sensorId, const char *name,
     const char *valTpl, const char *unit, const char *devClass)
 {
@@ -73,91 +74,13 @@ static void publishDiscoverySensor(const char *sensorId, const char *name,
     serializeJson(doc, output);
     mqtt.publish(topic.c_str(), output.c_str(), true);
 }
+#endif
 
 void sendMQTTDiscovery()
 {
-    if (!mqtt.connected()) return;
-
-    // Автоопределённые датчики температуры: temp1, temp2, ... tempN
-    for (uint8_t i = 0; i < sensorCount; i++)
-    {
-        String sensorId = "temp" + String(i + 1);
-        String valTpl = "{{ value_json.temp" + String(i + 1) + " }}";
-        String name = "Температура датчик " + String(i + 1);
-
-        publishDiscoverySensor(sensorId.c_str(), name.c_str(),
-            valTpl.c_str(), "°C", "temperature");
-    }
-
-    // Реле (switch) — используем строковые ON/OFF
-    {
-        String topic = String(HA_DISCOVERY_PREFIX) + "/switch/"
-            + HA_DEVICE_ID + "_relay/config";
-        JsonDocument doc;
-        doc["name"] = "Реле";
-        doc["uniq_id"] = String(HA_DEVICE_ID) + "_relay";
-        doc["stat_t"] = MQTT_TOPIC_STATE;
-        doc["cmd_t"] = MQTT_TOPIC_SET_TOGGLE;
-        doc["val_tpl"] = "{{ value_json.toggle }}";
-        doc["payload_on"] = "ON";
-        doc["payload_off"] = "OFF";
-        doc["state_on"] = "ON";
-        doc["state_off"] = "OFF";
-        doc["dev"]["ids"] = HA_DEVICE_ID;
-        doc["qos"] = 1;
-        doc["retain"] = false;
-        String output;
-        serializeJson(doc, output);
-        mqtt.publish(topic.c_str(), output.c_str(), true);
-        Serial.println("HA Discovery: relay");
-    }
-
-    // Мощность (number) — добавим mode: slider
-    {
-        String topic = String(HA_DISCOVERY_PREFIX) + "/number/"
-            + HA_DEVICE_ID + "_power/config";
-        JsonDocument doc;
-        doc["name"] = "Мощность";
-        doc["uniq_id"] = String(HA_DEVICE_ID) + "_power";
-        doc["stat_t"] = MQTT_TOPIC_STATE;
-        doc["cmd_t"] = MQTT_TOPIC_SET_SLIDER;
-        doc["val_tpl"] = "{{ value_json.slider | int }}";
-        doc["min"] = 0;
-        doc["max"] = 1023;
-        doc["step"] = 1;
-        doc["mode"] = "slider";
-        doc["unit_of_meas"] = "";
-        doc["dev"]["ids"] = HA_DEVICE_ID;
-        doc["qos"] = 1;
-        String output;
-        serializeJson(doc, output);
-        mqtt.publish(topic.c_str(), output.c_str(), true);
-        Serial.println("HA Discovery: power slider");
-    }
-
-    // Режим (select)
-    {
-        String topic = String(HA_DISCOVERY_PREFIX) + "/select/"
-            + HA_DEVICE_ID + "_mode/config";
-        JsonDocument doc;
-        doc["name"] = "Режим";
-        doc["uniq_id"] = String(HA_DEVICE_ID) + "_mode";
-        doc["stat_t"] = MQTT_TOPIC_STATE;
-        doc["cmd_t"] = MQTT_TOPIC_SET_SELECT;
-        doc["val_tpl"] = "{{ value_json.select_mode }}";
-        for (int i = 0; i < selectOptionCount; i++)
-            doc["options"][i] = selectOptions[i];
-        doc["dev"]["ids"] = HA_DEVICE_ID;
-        doc["qos"] = 1;
-        String output;
-        serializeJson(doc, output);
-        mqtt.publish(topic.c_str(), output.c_str(), true);
-        Serial.println("HA Discovery: mode select");
-    }
-
-    Serial.println("HA Discovery sent");
+    // HA Discovery disabled - no-op
+    (void)mqtt;
 }
-
 // --- Публикация статуса ---
 void sendMQTTStatus()
 {
@@ -168,11 +91,14 @@ void sendMQTTStatus()
     // Температуры всех найденных датчиков: temp1, temp2, ... tempN
     for (uint8_t i = 0; i < sensorCount; i++)
     {
-        String key = "temp" + String(i + 1);
-        if (sensorTemps[i] != DEVICE_DISCONNECTED_C)
-            doc[key.c_str()] = serialized(String(sensorTemps[i], 1));
-        else
-            doc[key.c_str()] = "NaN";
+        float temp = sensorTemps[i];
+        // Проверяем на валидность значения: не NAN, не DEVICE_DISCONNECTED_C
+        if (!isnan(temp) && temp != DEVICE_DISCONNECTED_C)
+        {
+            String key = "temp" + String(i + 1);
+            doc[key.c_str()] = serialized(String(temp, 1));
+        }
+        // else: не добавляем ключ temp1/temp2, если значение невалидно
     }
     doc["SensorCount"] = sensorCount;
     doc["slider"] = db[kk::slider].toInt();
@@ -209,7 +135,9 @@ void mqttReconnect()
         mqtt.subscribe(MQTT_TOPIC_SET_SLIDER);
         mqtt.subscribe(MQTT_TOPIC_SET_TOGGLE);
         mqtt.subscribe(MQTT_TOPIC_SET_SELECT);
+#if ENABLE_HA_DISCOVERY
         sendMQTTDiscovery();
+#endif
     }
     else
     {
