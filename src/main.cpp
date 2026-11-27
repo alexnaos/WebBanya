@@ -9,9 +9,11 @@ void setup()
 {
     Serial.begin(115200);
     pinMode(LED_PIN, OUTPUT);
-    analogWriteRange(PWM_MAX);
-    analogWriteFreq(PWM_FREQ);
+    //analogWriteRange(PWM_MAX);
+    //analogWriteFreq(PWM_FREQ);
     analogWrite(LED_PIN, 0);
+    analogWriteRange(1023);    // Разрешаем ШИМ от 0 до 1023
+    analogWriteFreq(PWM_FREQ); // Устанавливаем частоту (10000 Гц из config.h)
 
     LittleFS.begin();
     db.begin();
@@ -21,7 +23,13 @@ void setup()
     db.init(kk::tmp1, 0.0f);
     db.init(kk::tmp2, 0.0f);
     db.init(kk::toggle, true);
-    db.init(kk::slider, -3.5);
+    db.init(kk::slider, MIN_FAN_PWM);
+
+    // Ползунок мощности живёт в диапазоне MIN_FAN_PWM..PWM_MAX.
+    // Если в базе сохранилось старое значение из диапазона 0..1023 (или мусор) — подрезаем его,
+    // иначе веб-интерфейс и вентилятор будут показывать/делать разное
+    if (db[kk::slider].toInt() < MIN_FAN_PWM || db[kk::slider].toInt() > PWM_MAX)
+        db[kk::slider] = MIN_FAN_PWM;
 
     // Ключи БД для всех возможных датчиков (для авто-обновления в вебморде)
     for (size_t i = 0; i < MAX_SENSORS; i++)
@@ -45,13 +53,18 @@ void setup()
     initOTA();
 
     // Регистрация кастомного CSS (если файл есть на LittleFS)
-    if (LittleFS.exists("/custom.js")) {
+    if (LittleFS.exists("/custom.js"))
+    {
         sett.setCustomFile("/custom.js");
         Serial.println("Custom theme loaded from /custom.js");
     }
 
     // Веб-интерфейс (после БД)
-    sett.config.theme = sets::Colors::Default;
+    // Акцентный цвет. Colors::Default (0xffffffff) — это БЕЛЫЙ акцент: кнопки, переключатель
+    // и заливка слайдера становятся белыми, а текст кнопок в Settings тоже белый (клиент
+    // считает контраст от строки "var(--accent)") — получаются белые пустые поля.
+    // Берём акцент из custom.js (#00b4d8), чтобы кнопки/тумблер/слайдер были цветными.
+    sett.config.theme = (sets::Colors)0x00B4D8;
     sett.begin();
     sett.onBuild(build);
     sett.onUpdate(update);

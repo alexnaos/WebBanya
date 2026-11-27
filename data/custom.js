@@ -105,8 +105,13 @@ body {
 }
 
 .slider {
-  background: var(--dark) !important;
+  /* ВАЖНО: background-color, а не background. Шорткат background с !important
+     сбрасывает background-size, который JS выставляет по значению ползунка,
+     и заливка растягивается на весь трек. */
+  background-color: var(--dark) !important;
   background-image: linear-gradient(var(--accent), var(--accent)) !important;
+  background-repeat: no-repeat !important;
+  background-position: left center !important;
   border-radius: 4px !important;
   height: 5px !important;
 }

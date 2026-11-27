@@ -18,7 +18,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     String strTopic = String(topic);
 
     if (strTopic == MQTT_TOPIC_SET_SLIDER)
-        db[kk::slider] = msg.toFloat();
+        db[kk::slider] = constrain(msg.toInt(), MIN_FAN_PWM, PWM_MAX); // мощность: MIN_FAN_PWM..PWM_MAX
 
     if (strTopic == MQTT_TOPIC_SET_TOGGLE)
     {

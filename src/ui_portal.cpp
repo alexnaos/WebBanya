@@ -42,7 +42,8 @@ void build(sets::Builder &b)
         b.endGroup();
     }
     b.Switch(kk::toggle, "Реле");
-    b.Slider(kk::slider, "Мощность", 0, 1023, 1);
+    // Ползунок сразу в рабочем диапазоне: ниже MIN_FAN_PWM вентилятор не крутится
+    b.Slider(kk::slider, "Мощность", MIN_FAN_PWM, PWM_MAX, 1);
     b.Select(kk::selectw, "Выбор", "var1;var2;hello");
 
     if (b.beginRow())
@@ -93,7 +94,7 @@ void update(sets::Updater &upd)
     for (uint8_t i = 0; i < sensorCount; i++)
     {
         if (sensorTemps[i] != DEVICE_DISCONNECTED_C)
-            upd.update(kk::sensorKeyBase + i, sensorTemps[i], 1);
+            upd.update(kk::sensorKeyBase + i, sensorTemps[i]);
         else
             upd.update(kk::sensorKeyBase + i, "-");
     }
